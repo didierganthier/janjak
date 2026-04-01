@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.env
+*.db
+.janjak/
+
+# Credentials — never commit these
+gmail-credentials.json
+gmail-tokens.json
+*.pem
+*.key
+
+# macOS
+.DS_Store
+*.app/
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+*.tsbuildinfo
+*.wav
+*.mp3

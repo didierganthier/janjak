@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Janjak — Your Ambient Intelligence</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg2: #12121a;
+      --bg3: #1a1a28;
+      --border: #2a2a3a;
+      --text: #e0e0f0;
+      --text2: #8888aa;
+      --accent: #7c5cfc;
+      --accent2: #a78bfa;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --cyan: #22d3ee;
+      --pink: #f472b6;
+      --orange: #fb923c;
+      --radius: 16px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── Header ─── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo { font-size: 28px; }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .live-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .time-display {
+      color: var(--text2);
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ─── Grid Layout ─── */
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px;
+      padding: 24px 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ─── Cards ─── */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text2);
+    }
+    .card-icon { font-size: 20px; }
+    .card.wide { grid-column: span 2; }
+
+    /* ─── Status Card ─── */
+    .status-activity {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .status-app {
+      color: var(--text2);
+      font-size: 14px;
+      margin-bottom: 16px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status-meta {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .meta-label {
+      font-size: 11px;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .meta-value {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    /* ─── Score Card ─── */
+    .score-big {
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .score-label {
+      font-size: 16px;
+      margin-bottom: 16px;
+    }
+    .score-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--bg3);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.6s ease;
+    }
+    .score-stats {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .score-stat {
+      font-size: 13px;
+      color: var(--text2);
+    }
+    .score-stat span {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    /* ─── Weekly Chart ─── */
+    .weekly-chart {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      height: 100px;
+      margin-top: 12px;
+    }
+    .chart-bar-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .chart-bar {
+      width: 100%;
+      max-width: 36px;
+      border-radius: 4px 4px 0 0;
+      transition: height 0.4s ease;
+      min-height: 2px;
+    }
+    .chart-label {
+      font-size: 10px;
+      color: var(--text2);
+    }
+    .chart-value {
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* ─── Activity Breakdown ─── */
+    .activity-list { display: flex; flex-direction: column; gap: 10px; }
+    .activity-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .activity-emoji { font-size: 18px; width: 28px; text-align: center; }
+    .activity-name {
+      font-size: 13px;
+      width: 80px;
+      color: var(--text2);
+      text-transform: capitalize;
+    }
+    .activity-bar-bg {
+      flex: 1;
+      height: 8px;
+      background: var(--bg3);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .activity-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+    .activity-mins {
+      font-size: 13px;
+      font-weight: 600;
+      width: 50px;
+      text-align: right;
+    }
+
+    /* ─── Tasks ─── */
+    .task-list { display: flex; flex-direction: column; gap: 8px; }
+    .task-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg3);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .task-item:hover { background: var(--border); }
+    .task-priority {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .task-priority.high { background: var(--red); }
+    .task-priority.medium { background: var(--yellow); }
+    .task-priority.low { background: var(--green); }
+    .task-title {
+      flex: 1;
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .task-status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: var(--bg2);
+      color: var(--text2);
+      flex-shrink: 0;
+    }
+    .task-status.in-progress { background: rgba(124,92,252,0.2); color: var(--accent2); }
+    .task-status.done { background: rgba(52,211,153,0.2); color: var(--green); }
+    .task-empty { color: var(--text2); font-size: 14px; padding: 12px 0; }
+    .task-reply-btn {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(124,92,252,0.15);
+      color: var(--accent2);
+      border: none;
+      cursor: pointer;
+      flex-shrink: 0;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .task-reply-btn:hover { background: rgba(124,92,252,0.3); }
+
+    /* ─── Reply Modal ─── */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .modal-overlay.show { opacity: 1; pointer-events: auto; }
+    .modal {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      max-width: 560px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal h3 { font-size: 18px; margin-bottom: 4px; }
+    .modal .meta { color: var(--text2); font-size: 13px; margin-bottom: 16px; }
+    .modal textarea {
+      width: 100%; min-height: 150px;
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px; color: var(--text);
+      font-size: 14px; font-family: inherit; resize: vertical;
+      outline: none;
+    }
+    .modal textarea:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 10px; margin-top: 14px; }
+    .modal-btn {
+      padding: 8px 20px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .modal-btn.primary { background: var(--accent); color: #fff; }
+    .modal-btn.primary:hover { background: #6b4fe0; }
+    .modal-btn.secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
+    .modal-btn.secondary:hover { background: var(--border); }
+    .modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .tone-select {
+      display: flex; gap: 6px; margin-bottom: 12px;
+    }
+    .tone-btn {
+      padding: 4px 12px; border-radius: 6px; font-size: 12px;
+      font-weight: 600; border: 1px solid var(--border);
+      background: var(--bg3); color: var(--text2); cursor: pointer;
+    }
+    .tone-btn.active { background: rgba(124,92,252,0.2); color: var(--accent2); border-color: var(--accent); }
+    .modal-loading { color: var(--text2); font-size: 14px; padding: 20px 0; text-align: center; }
+
+    /* ─── Quick Actions ─── */
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .action-btn {
+      padding: 10px 20px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg3);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .action-btn:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .action-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .action-btn.danger:hover {
+      background: var(--red);
+      border-color: var(--red);
+    }
+
+    /* ─── Calendar ─── */
+    .cal-event {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--bg3);
+      border-radius: 10px;
+      margin-bottom: 6px;
+    }
+    .cal-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .cal-dot.now { background: var(--red); }
+    .cal-dot.upcoming { background: var(--yellow); }
+    .cal-dot.passed { background: var(--text2); }
+    .cal-time {
+      font-size: 12px;
+      color: var(--text2);
+      width: 60px;
+      flex-shrink: 0;
+    }
+    .cal-title {
+      font-size: 14px;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ─── GitHub ─── */
+    .gh-stat {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+    }
+    .gh-stat-icon { font-size: 18px; }
+    .gh-stat-count {
+      font-size: 24px;
+      font-weight: 700;
+      min-width: 30px;
+    }
+    .gh-stat-label {
+      font-size: 13px;
+      color: var(--text2);
+    }
+
+    /* ─── Projects ─── */
+    .project-list { display: flex; flex-direction: column; gap: 10px; }
+    .project-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .project-name {
+      font-size: 13px;
+      width: 100px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .project-bar-bg {
+      flex: 1;
+      height: 6px;
+      background: var(--bg3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .project-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: var(--accent);
+    }
+    .project-mins {
+      font-size: 13px;
+      font-weight: 600;
+      width: 50px;
+      text-align: right;
+      color: var(--text2);
+    }
+
+    /* ─── Streak + Pomo ─── */
+    .streak-big {
+      font-size: 40px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .streak-label {
+      font-size: 14px;
+      color: var(--text2);
+      margin-top: 4px;
+    }
+    .pomo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(251,146,60,0.15);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--orange);
+      font-weight: 600;
+      margin-top: 12px;
+    }
+
+    /* ─── Music ─── */
+    .music-track {
+      font-size: 15px;
+      margin-bottom: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .music-controls {
+      display: flex;
+      gap: 8px;
+    }
+    .music-btn {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--bg3);
+      color: var(--text);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .music-btn:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* ─── Nudge ─── */
+    .nudge-box {
+      padding: 14px 16px;
+      background: rgba(124,92,252,0.1);
+      border: 1px solid rgba(124,92,252,0.3);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--accent2);
+    }
+
+    /* ─── Proactive Alerts ─── */
+    .alerts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .alert-item {
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .alert-item.critical {
+      background: rgba(248,113,113,0.15);
+      border: 1px solid rgba(248,113,113,0.3);
+      color: var(--red);
+    }
+    .alert-item.high {
+      background: rgba(251,191,36,0.12);
+      border: 1px solid rgba(251,191,36,0.25);
+      color: var(--yellow);
+    }
+    .alert-item.medium {
+      background: rgba(124,92,252,0.1);
+      border: 1px solid rgba(124,92,252,0.25);
+      color: var(--accent2);
+    }
+    .alert-item.low {
+      background: rgba(52,211,153,0.08);
+      border: 1px solid rgba(52,211,153,0.2);
+      color: var(--green);
+    }
+    .alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .alert-content { flex: 1; }
+    .alert-title { font-weight: 700; font-size: 14px; margin-bottom: 3px; }
+    .alert-msg { opacity: 0.85; font-size: 13px; }
+    .alert-action {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 4px 12px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .alert-action:hover { background: rgba(255,255,255,0.15); }
+    .no-alerts {
+      padding: 20px;
+      text-align: center;
+      color: var(--text2);
+      font-size: 14px;
+    }
+
+    /* ─── Meeting Alert ─── */
+    .alert-box {
+      padding: 14px 16px;
+      background: rgba(248,113,113,0.1);
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--red);
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    /* ─── Integration badges ─── */
+    .integrations {
+      display: flex;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .badge.connected { background: rgba(52,211,153,0.15); color: var(--green); }
+    .badge.disconnected { background: rgba(136,136,170,0.1); color: var(--text2); }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 768px) {
+      .header { padding: 16px; }
+      .dashboard { padding: 16px; grid-template-columns: 1fr; }
+      .card.wide { grid-column: span 1; }
+      .score-big { font-size: 42px; }
+    }
+
+    /* ─── Scrollbar ─── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <span class="logo">🧠</span>
+      <h1>Janjak</h1>
+      <div class="integrations" id="integrations"></div>
+    </div>
+    <div class="header-right">
+      <div class="live-dot"></div>
+      <span class="time-display" id="clock"></span>
+    </div>
+  </header>
+
+  <!-- Dashboard Grid -->
+  <main class="dashboard" id="dashboard">
+
+    <!-- Status -->
+    <div class="card" id="status-card">
+      <div class="card-header">
+        <span class="card-title">Current Status</span>
+        <span class="card-icon" id="status-icon">💻</span>
+      </div>
+      <div class="status-activity" id="status-activity">Loading…</div>
+      <div class="status-app" id="status-app">&nbsp;</div>
+      <div class="status-meta">
+        <div class="meta-item">
+          <span class="meta-label">Mode</span>
+          <span class="meta-value" id="status-mode">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Session</span>
+          <span class="meta-value" id="status-session">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Energy</span>
+          <span class="meta-value" id="status-energy">—</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Project</span>
+          <span class="meta-value" id="status-project">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Score -->
+    <div class="card" id="score-card">
+      <div class="card-header">
+        <span class="card-title">Focus Score</span>
+        <span class="card-icon">🎯</span>
+      </div>
+      <div class="score-big" id="score-value">—</div>
+      <div class="score-label" id="score-label">&nbsp;</div>
+      <div class="score-bar"><div class="score-bar-fill" id="score-bar"></div></div>
+      <div class="score-stats">
+        <span class="score-stat">💻 <span id="score-coding">0</span>m code</span>
+        <span class="score-stat">🌐 <span id="score-browsing">0</span>m browse</span>
+        <span class="score-stat">⏱️ <span id="score-total">0</span>m total</span>
+        <span class="score-stat">📊 <span id="score-focus">0</span>% focus</span>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Quick Actions</span>
+        <span class="card-icon">⚡</span>
+      </div>
+      <div class="actions">
+        <button class="action-btn" id="btn-focus" onclick="doAction('focus')">🎯 Focus</button>
+        <button class="action-btn" id="btn-break" onclick="doAction('break')">☕ Break</button>
+        <button class="action-btn danger" id="btn-stop" onclick="doAction('stop')">⏹ Stop</button>
+      </div>
+    </div>
+
+    <!-- Streak + Pomo -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Streak & Pomodoros</span>
+        <span class="card-icon">🔥</span>
+      </div>
+      <div class="streak-big" id="streak-days">0</div>
+      <div class="streak-label" id="streak-label">day streak</div>
+      <div id="pomo-badge"></div>
+    </div>
+
+    <!-- Weekly Trend -->
+    <div class="card wide" id="weekly-card">
+      <div class="card-header">
+        <span class="card-title">Weekly Trend</span>
+        <span class="card-icon">📈</span>
+      </div>
+      <div class="weekly-chart" id="weekly-chart"></div>
+    </div>
+
+    <!-- Activity Breakdown -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Today's Activity</span>
+        <span class="card-icon">📊</span>
+      </div>
+      <div class="activity-list" id="activity-list">
+        <div class="task-empty">No activity yet today</div>
+      </div>
+    </div>
+
+    <!-- Tasks -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Tasks</span>
+        <span class="card-icon">📋</span>
+      </div>
+      <div class="task-list" id="task-list">
+        <div class="task-empty">No tasks</div>
+      </div>
+    </div>
+
+    <!-- Calendar -->
+    <div class="card" id="calendar-card">
+      <div class="card-header">
+        <span class="card-title">Calendar</span>
+        <span class="card-icon">📅</span>
+      </div>
+      <div id="meeting-alert"></div>
+      <div id="calendar-content">
+        <div class="task-empty">Not connected</div>
+      </div>
+    </div>
+
+    <!-- GitHub -->
+    <div class="card" id="github-card">
+      <div class="card-header">
+        <span class="card-title">GitHub</span>
+        <span class="card-icon">🐙</span>
+      </div>
+      <div id="github-content">
+        <div class="task-empty">Not connected</div>
+      </div>
+    </div>
+
+    <!-- Projects -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Projects</span>
+        <span class="card-icon">📂</span>
+      </div>
+      <div class="project-list" id="project-list">
+        <div class="task-empty">No project data</div>
+      </div>
+    </div>
+
+    <!-- Music -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Music</span>
+        <span class="card-icon">🎵</span>
+      </div>
+      <div class="music-track" id="music-track">Nothing playing</div>
+      <div class="music-controls">
+        <button class="music-btn" onclick="musicAction('pause')" title="Pause">⏸</button>
+        <button class="music-btn" onclick="musicAction('resume')" title="Play">▶</button>
+      </div>
+    </div>
+
+    <!-- Nudge -->
+    <div class="card" id="nudge-card" style="display:none">
+      <div class="card-header">
+        <span class="card-title">Nudge</span>
+        <span class="card-icon">💡</span>
+      </div>
+      <div class="nudge-box" id="nudge-text"></div>
+    </div>
+
+    <!-- Proactive Alerts -->
+    <div class="card wide" id="alerts-card">
+      <div class="card-header">
+        <span class="card-title">🔔 Proactive Alerts</span>
+        <span class="card-icon" id="alerts-count">0</span>
+      </div>
+      <div class="alerts-list" id="alerts-list">
+        <div class="no-alerts">✨ All clear — no alerts right now</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Reply Modal -->
+  <div class="modal-overlay" id="reply-modal" onclick="if(event.target===this)closeReplyModal()">
+    <div class="modal">
+      <h3>✉️ Draft Reply</h3>
+      <div class="meta" id="reply-meta"></div>
+      <div class="tone-select">
+        <button class="tone-btn active" data-tone="professional" onclick="setTone(this)">Professional</button>
+        <button class="tone-btn" data-tone="friendly" onclick="setTone(this)">Friendly</button>
+        <button class="tone-btn" data-tone="brief" onclick="setTone(this)">Brief</button>
+      </div>
+      <div id="reply-content">
+        <div class="modal-loading">🧠 Generating draft...</div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn primary" id="reply-mailto-btn" disabled onclick="sendViaMailto()">Open in Email App</button>
+        <button class="modal-btn secondary" id="reply-copy-btn" disabled onclick="copyReply()">Copy to Clipboard</button>
+        <button class="modal-btn secondary" onclick="closeReplyModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = "";
+    let lastState = null;
+
+    // ─── Activity config ───
+    const ACTIVITY_EMOJI = {
+      coding: "💻", browsing: "🌐", designing: "🎨",
+      writing: "✍️", meeting: "📞", idle: "😴", unknown: "❓",
+      "social-media": "📱", entertainment: "🎬", learning: "📚",
+      email: "📧", communication: "💬", creative: "🎹", reading: "📖"
+    };
+    const ACTIVITY_LABEL = {
+      coding: "Coding", browsing: "Browsing", designing: "Designing",
+      writing: "Writing", meeting: "In a Meeting", idle: "Idle", unknown: "Unknown",
+      "social-media": "Social Media", entertainment: "Entertainment", learning: "Learning",
+      email: "Email", communication: "Messaging", creative: "Creative", reading: "Reading"
+    };
+    const ACTIVITY_COLOR = {
+      coding: "var(--green)", browsing: "var(--cyan)", designing: "var(--pink)",
+      writing: "var(--yellow)", meeting: "var(--orange)", idle: "var(--text2)", unknown: "var(--text2)",
+      "social-media": "var(--red)", entertainment: "var(--pink)", learning: "var(--accent2)",
+      email: "var(--yellow)", communication: "var(--cyan)", creative: "var(--accent)", reading: "var(--green)"
+    };
+    const ENERGY_DISPLAY = {
+      high: "🟢 High", medium: "🟡 Medium", low: "🟠 Low", drained: "🔴 Drained"
+    };
+    const MODE_DISPLAY = {
+      "deep-work": "🎯 Deep Work", casual: "💡 Casual", break: "☕ Break", off: "⏹ Off"
+    };
+
+    function scoreColor(score) {
+      if (score >= 70) return "var(--green)";
+      if (score >= 50) return "var(--yellow)";
+      return "var(--red)";
+    }
+
+    // ─── Clock ───
+    function updateClock() {
+      const el = document.getElementById("clock");
+      if (el) el.textContent = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // ─── API helpers ───
+    async function fetchState() {
+      try {
+        const res = await fetch(API + "/api/state");
+        if (!res.ok) return null;
+        return await res.json();
+      } catch { return null; }
+    }
+
+    async function doAction(action) {
+      try {
+        await fetch(API + "/api/" + action, { method: "POST" });
+        setTimeout(refresh, 500);
+      } catch (e) { console.error(e); }
+    }
+
+    async function musicAction(action) {
+      try {
+        await fetch(API + "/api/music/" + action, { method: "POST" });
+        setTimeout(refresh, 1000);
+      } catch (e) { console.error(e); }
+    }
+
+    async function updateTask(id, status) {
+      try {
+        await fetch(API + "/api/task/" + id + "?status=" + status, { method: "PUT" });
+        setTimeout(refresh, 300);
+      } catch (e) { console.error(e); }
+    }
+
+    // ─── Render ───
+    function render(s) {
+      if (!s) return;
+      lastState = s;
+
+      // Status
+      const act = s.status.activity;
+      document.getElementById("status-icon").textContent = ACTIVITY_EMOJI[act] || "❓";
+      document.getElementById("status-activity").textContent = ACTIVITY_LABEL[act] || act;
+      document.getElementById("status-app").textContent = s.status.app ? s.status.app + (s.status.appTitle ? " — " + truncate(s.status.appTitle, 40) : "") : "No active app";
+      document.getElementById("status-mode").textContent = MODE_DISPLAY[s.status.focusMode] || s.status.focusMode;
+      document.getElementById("status-session").textContent = s.status.sessionMinutes + "m";
+      document.getElementById("status-energy").textContent = ENERGY_DISPLAY[s.status.energy] || s.status.energy;
+      document.getElementById("status-project").textContent = s.currentProject.project || "—";
+
+      // Focus button highlighting
+      document.getElementById("btn-focus").classList.toggle("active", s.status.focusMode === "deep-work");
+      document.getElementById("btn-break").classList.toggle("active", s.status.focusMode === "break");
+
+      // Score
+      const sc = s.score;
+      const sColor = scoreColor(sc.value);
+      document.getElementById("score-value").textContent = sc.value;
+      document.getElementById("score-value").style.color = sColor;
+      document.getElementById("score-label").textContent = sc.label;
+      const bar = document.getElementById("score-bar");
+      bar.style.width = sc.value + "%";
+      bar.style.background = `linear-gradient(90deg, ${sColor}, ${sColor}88)`;
+      document.getElementById("score-coding").textContent = sc.codingMinutes;
+      document.getElementById("score-browsing").textContent = sc.browsingMinutes;
+      document.getElementById("score-total").textContent = sc.totalMinutes;
+      document.getElementById("score-focus").textContent = Math.round(sc.focusRatio * 100);
+
+      // Weekly chart
+      const chart = document.getElementById("weekly-chart");
+      const days = s.weeklyScores || [];
+      const maxScore = Math.max(...days.map(d => d.score), 1);
+      chart.innerHTML = days.map(d => {
+        const h = Math.max(2, (d.score / 100) * 90);
+        const c = scoreColor(d.score);
+        const dayLabel = new Date(d.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" });
+        return `<div class="chart-bar-wrap">
+          <div class="chart-value" style="color:${c}">${d.score}</div>
+          <div class="chart-bar" style="height:${h}px;background:${c}"></div>
+          <div class="chart-label">${dayLabel}</div>
+        </div>`;
+      }).join("");
+
+      // Activity breakdown
+      const acts = s.todayStats.activities;
+      const totalMins = Object.values(acts).reduce((a, b) => a + b, 0);
+      const actList = document.getElementById("activity-list");
+      if (totalMins === 0) {
+        actList.innerHTML = '<div class="task-empty">No activity yet today</div>';
+      } else {
+        const sorted = Object.entries(acts).sort((a, b) => b[1] - a[1]);
+        actList.innerHTML = sorted.map(([name, mins]) => {
+          const pct = totalMins > 0 ? Math.round((mins / totalMins) * 100) : 0;
+          const color = ACTIVITY_COLOR[name] || "var(--text2)";
+          return `<div class="activity-row">
+            <span class="activity-emoji">${ACTIVITY_EMOJI[name] || "❓"}</span>
+            <span class="activity-name">${name}</span>
+            <div class="activity-bar-bg"><div class="activity-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+            <span class="activity-mins">${Math.round(mins)}m</span>
+          </div>`;
+        }).join("");
+      }
+
+      // Tasks
+      const taskList = document.getElementById("task-list");
+      if (s.tasks.length === 0) {
+        taskList.innerHTML = '<div class="task-empty">No pending tasks ✨</div>';
+      } else {
+        taskList.innerHTML = s.tasks.slice(0, 8).map(t => {
+          const nextStatus = t.status === "pending" ? "in-progress" : t.status === "in-progress" ? "done" : null;
+          const click = nextStatus ? ` onclick="updateTask(${t.id},'${nextStatus}')"` : "";
+          const replyBtn = t.person ? `<button class="task-reply-btn" onclick="event.stopPropagation(); openReplyModal(${t.id})" title="Draft reply">✉️ Reply</button>` : "";
+          return `<div class="task-item"${click}>
+            <div class="task-priority ${t.priority}"></div>
+            <div class="task-title">${esc(t.title)}</div>
+            ${replyBtn}
+            <div class="task-status ${t.status}">${t.status}</div>
+          </div>`;
+        }).join("");
+      }
+
+      // Streak
+      document.getElementById("streak-days").textContent = s.streak.days;
+      document.getElementById("streak-label").textContent =
+        s.streak.days === 0 ? "Score 50+ to start!" :
+        s.streak.days === 1 ? "day streak" : "day streak 🔥";
+      const pomoBadge = document.getElementById("pomo-badge");
+      if (s.pomo.today > 0) {
+        pomoBadge.innerHTML = `<div class="pomo-badge">🍅 ${s.pomo.today} pomodoro${s.pomo.today > 1 ? "s" : ""} (${s.pomo.totalMinutes}m)</div>`;
+      } else {
+        pomoBadge.innerHTML = "";
+      }
+
+      // Calendar
+      const calContent = document.getElementById("calendar-content");
+      const alertBox = document.getElementById("meeting-alert");
+      if (s.meetingAlert) {
+        alertBox.innerHTML = `<div class="alert-box">⏰ ${esc(s.meetingAlert)}</div>`;
+      } else {
+        alertBox.innerHTML = "";
+      }
+      if (!s.integrations.googleAuth) {
+        calContent.innerHTML = '<div class="task-empty">Run <code>janjak login</code> to connect Google Calendar</div>';
+      } else if (s.calendar) {
+        let html = "";
+        if (s.calendar.currentEvent) {
+          html += `<div class="cal-event"><div class="cal-dot now"></div><span class="cal-time">NOW</span><span class="cal-title">${esc(s.calendar.currentEvent.title)}</span></div>`;
+        }
+        if (s.calendar.nextEvent) {
+          const mins = s.calendar.nextEvent.minutesUntil;
+          html += `<div class="cal-event"><div class="cal-dot upcoming"></div><span class="cal-time">in ${mins}m</span><span class="cal-title">${esc(s.calendar.nextEvent.title)}</span></div>`;
+        }
+        html += `<div style="margin-top:8px;font-size:13px;color:var(--text2)">📅 ${s.calendar.totalMeetings} meeting${s.calendar.totalMeetings!==1?"s":""} · 🟢 ${s.calendar.freeMinutes}m free</div>`;
+        calContent.innerHTML = html || '<div class="task-empty">No events today 🎉</div>';
+      } else {
+        calContent.innerHTML = '<div class="task-empty">No events today 🎉</div>';
+      }
+
+      // GitHub
+      const ghContent = document.getElementById("github-content");
+      if (!s.integrations.github) {
+        ghContent.innerHTML = '<div class="task-empty">Add GITHUB_TOKEN to ~/.janjak/.env</div>';
+      } else if (s.github) {
+        let html = "";
+        if (s.github.reviewCount > 0) html += ghStat("🔍", s.github.reviewCount, "review" + (s.github.reviewCount > 1 ? "s" : "") + " requested", "var(--red)");
+        if (s.github.prCount > 0) html += ghStat("📤", s.github.prCount, "open PR" + (s.github.prCount > 1 ? "s" : ""), "var(--cyan)");
+        if (s.github.issueCount > 0) html += ghStat("📋", s.github.issueCount, "assigned issue" + (s.github.issueCount > 1 ? "s" : ""), "var(--yellow)");
+        if (s.github.notifCount > 0) html += ghStat("🔔", s.github.notifCount, "notification" + (s.github.notifCount > 1 ? "s" : ""), "var(--accent2)");
+        if (!html) html = '<div class="task-empty">All clear ✨</div>';
+        ghContent.innerHTML = html;
+      } else {
+        ghContent.innerHTML = '<div class="task-empty">Loading…</div>';
+      }
+
+      // Projects
+      const projList = document.getElementById("project-list");
+      if (s.projects.length === 0) {
+        projList.innerHTML = '<div class="task-empty">No project data today</div>';
+      } else {
+        const maxProjMins = Math.max(...s.projects.map(p => p.minutes));
+        projList.innerHTML = s.projects.slice(0, 5).map(p => {
+          const pct = maxProjMins > 0 ? Math.round((p.minutes / maxProjMins) * 100) : 0;
+          return `<div class="project-row">
+            <span class="project-name">📂 ${esc(p.project)}</span>
+            <div class="project-bar-bg"><div class="project-bar-fill" style="width:${pct}%"></div></div>
+            <span class="project-mins">${p.minutes}m</span>
+          </div>`;
+        }).join("");
+      }
+
+      // Music
+      document.getElementById("music-track").textContent = s.music || "Nothing playing 🔇";
+
+      // Nudge
+      const nudgeCard = document.getElementById("nudge-card");
+      if (s.nudge) {
+        nudgeCard.style.display = "";
+        document.getElementById("nudge-text").textContent = s.nudge;
+      } else {
+        nudgeCard.style.display = "none";
+      }
+
+      // Proactive Alerts
+      renderAlerts(s.alerts || []);
+
+      // Integration badges
+      const integ = document.getElementById("integrations");
+      integ.innerHTML =
+        `<span class="badge ${s.integrations.googleAuth ? "connected" : "disconnected"}">${s.integrations.googleAuth ? "✓ Google" : "○ Google"}</span>` +
+        `<span class="badge ${s.integrations.github ? "connected" : "disconnected"}">${s.integrations.github ? "✓ GitHub" : "○ GitHub"}</span>`;
+    }
+
+    // ─── Helpers ───
+    function truncate(s, max) {
+      return s.length <= max ? s : s.slice(0, max - 1) + "…";
+    }
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    const priorityIcons = { critical: "🚨", high: "⚠️", medium: "💡", low: "ℹ️" };
+
+    function renderAlerts(alerts) {
+      const list = document.getElementById("alerts-list");
+      const count = document.getElementById("alerts-count");
+      count.textContent = alerts.length || "";
+
+      if (!alerts.length) {
+        list.innerHTML = '<div class="no-alerts">✨ All clear — no alerts right now</div>';
+        return;
+      }
+
+      list.innerHTML = alerts.map(a => {
+        const icon = priorityIcons[a.priority] || "💡";
+        let actionHtml = "";
+        if (a.actionLabel) {
+          if (a.action && a.action.startsWith("http")) {
+            actionHtml = `<a class="alert-action" href="${esc(a.action)}" target="_blank">${esc(a.actionLabel)}</a>`;
+          } else if (a.action === "janjak focus") {
+            actionHtml = `<span class="alert-action" onclick="doAction('/api/focus')">${esc(a.actionLabel)}</span>`;
+          } else if (a.action === "janjak break") {
+            actionHtml = `<span class="alert-action" onclick="doAction('/api/break')">${esc(a.actionLabel)}</span>`;
+          }
+        }
+        return `<div class="alert-item ${a.priority}">
+          <span class="alert-icon">${icon}</span>
+          <div class="alert-content">
+            <div class="alert-title">${esc(a.title)}</div>
+            <div class="alert-msg">${esc(a.message)}</div>
+            ${actionHtml}
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+    async function doAction(endpoint) {
+      try { await fetch(API + endpoint, { method: "POST" }); } catch {}
+    }
+
+    // ─── Reply Modal ───
+    let currentReplyTaskId = null;
+    let currentReplyData = null;
+    let currentTone = "professional";
+
+    async function openReplyModal(taskId) {
+      currentReplyTaskId = taskId;
+      currentReplyData = null;
+      const modal = document.getElementById("reply-modal");
+      modal.classList.add("show");
+
+      // Find task info from last state
+      const task = lastState?.tasks?.find(t => t.id === taskId);
+      const meta = document.getElementById("reply-meta");
+      meta.textContent = task
+        ? `To: ${task.person || "unknown"} · Re: ${task.title}`
+        : `Task #${taskId}`;
+
+      document.getElementById("reply-mailto-btn").disabled = true;
+      document.getElementById("reply-copy-btn").disabled = true;
+      document.getElementById("reply-content").innerHTML = '<div class="modal-loading">🧠 Generating draft...</div>';
+
+      await generateDraft(taskId, currentTone);
+    }
+
+    function closeReplyModal() {
+      document.getElementById("reply-modal").classList.remove("show");
+      currentReplyTaskId = null;
+      currentReplyData = null;
+    }
+
+    function setTone(btn) {
+      document.querySelectorAll(".tone-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentTone = btn.dataset.tone;
+      if (currentReplyTaskId) {
+        document.getElementById("reply-content").innerHTML = '<div class="modal-loading">🧠 Regenerating...</div>';
+        document.getElementById("reply-mailto-btn").disabled = true;
+        document.getElementById("reply-copy-btn").disabled = true;
+        generateDraft(currentReplyTaskId, currentTone);
+      }
+    }
+
+    async function generateDraft(taskId, tone) {
+      try {
+        const res = await fetch(API + `/api/task/${taskId}/reply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tone }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          currentReplyData = data;
+          document.getElementById("reply-content").innerHTML =
+            `<textarea id="reply-textarea">${esc(data.reply)}</textarea>`;
+          document.getElementById("reply-mailto-btn").disabled = false;
+          document.getElementById("reply-copy-btn").disabled = false;
+        } else {
+          document.getElementById("reply-content").innerHTML =
+            '<div class="modal-loading" style="color:var(--red)">Failed to generate draft</div>';
+        }
+      } catch {
+        document.getElementById("reply-content").innerHTML =
+          '<div class="modal-loading" style="color:var(--red)">Connection error</div>';
+      }
+    }
+
+    function sendViaMailto() {
+      if (!currentReplyData) return;
+      const body = document.getElementById("reply-textarea")?.value || currentReplyData.reply;
+      const subject = encodeURIComponent(currentReplyData.subject);
+      const bodyEnc = encodeURIComponent(body);
+      const to = encodeURIComponent(currentReplyData.to);
+      window.open(`mailto:${to}?subject=${subject}&body=${bodyEnc}`, "_self");
+    }
+
+    function copyReply() {
+      const text = document.getElementById("reply-textarea")?.value || currentReplyData?.reply;
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById("reply-copy-btn");
+        btn.textContent = "✓ Copied!";
+        setTimeout(() => { btn.textContent = "Copy to Clipboard"; }, 2000);
+      });
+    }
+
+    function ghStat(icon, count, label, color) {
+      return `<div class="gh-stat">
+        <span class="gh-stat-icon">${icon}</span>
+        <span class="gh-stat-count" style="color:${color}">${count}</span>
+        <span class="gh-stat-label">${label}</span>
+      </div>`;
+    }
+
+    // ─── Polling loop ───
+    async function refresh() {
+      const state = await fetchState();
+      if (state) render(state);
+    }
+
+    // Initial load + poll every 5s
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>

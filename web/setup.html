@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Janjak — Setup Wizard</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg2: #12121a;
+      --bg3: #1a1a28;
+      --border: #2a2a3a;
+      --text: #e0e0f0;
+      --text2: #8888aa;
+      --accent: #7c5cfc;
+      --accent2: #a78bfa;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --cyan: #22d3ee;
+      --radius: 16px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .wizard {
+      max-width: 640px;
+      width: 100%;
+      padding: 40px 24px;
+    }
+
+    /* Header */
+    .hero {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .hero-logo { font-size: 64px; margin-bottom: 12px; }
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .hero p {
+      color: var(--text2);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    /* Progress */
+    .progress {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 32px;
+    }
+    .progress-dot {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+    .progress-dot.done { background: var(--green); }
+    .progress-dot.active { background: var(--accent); }
+
+    /* Cards */
+    .setup-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 20px;
+      transition: border-color 0.3s;
+    }
+    .setup-card.done { border-color: var(--green); }
+    .setup-card.active { border-color: var(--accent); }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .card-top-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .card-num {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--bg3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text2);
+      flex-shrink: 0;
+    }
+    .setup-card.done .card-num { background: rgba(52,211,153,0.2); color: var(--green); }
+    .setup-card.active .card-num { background: rgba(124,92,252,0.2); color: var(--accent2); }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .card-badge {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .badge-done { background: rgba(52,211,153,0.15); color: var(--green); }
+    .badge-optional { background: rgba(136,136,170,0.1); color: var(--text2); }
+    .badge-required { background: rgba(251,191,36,0.15); color: var(--yellow); }
+
+    .card-desc {
+      color: var(--text2);
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    /* Form elements */
+    .input-group {
+      margin-bottom: 12px;
+    }
+    .input-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      display: block;
+    }
+    input[type="text"], input[type="password"], textarea {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'SF Mono', 'Menlo', monospace;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, textarea:focus {
+      border-color: var(--accent);
+    }
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #6b4fe0; }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: var(--bg3);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    /* Messages */
+    .msg {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-top: 10px;
+      display: none;
+    }
+    .msg.show { display: block; }
+    .msg-success { background: rgba(52,211,153,0.1); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+    .msg-error { background: rgba(248,113,113,0.1); color: var(--red); border: 1px solid rgba(248,113,113,0.2); }
+
+    /* Features grid */
+    .features {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .feature {
+      font-size: 13px;
+      color: var(--text2);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .feature-icon { font-size: 16px; }
+
+    /* Help text */
+    .help {
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+    .help a {
+      color: var(--accent2);
+      text-decoration: none;
+    }
+    .help a:hover { text-decoration: underline; }
+
+    /* Steps link */
+    .steps {
+      background: var(--bg3);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .steps-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .steps ol {
+      padding-left: 18px;
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.8;
+    }
+    .steps a { color: var(--accent2); text-decoration: none; }
+    .steps a:hover { text-decoration: underline; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 40px;
+      padding: 20px 0;
+    }
+    .footer-btn {
+      padding: 14px 40px;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .footer-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(124,92,252,0.3);
+    }
+    .footer-text {
+      color: var(--text2);
+      font-size: 13px;
+      margin-top: 12px;
+    }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .wizard { padding: 24px 16px; }
+      .hero h1 { font-size: 24px; }
+      .features { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wizard">
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-logo">🧠</div>
+      <h1>Welcome to Janjak</h1>
+      <p>Let's get you set up. Connect the services you use<br>and Janjak will start understanding your workflow.</p>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress">
+      <div class="progress-dot" id="prog-1"></div>
+      <div class="progress-dot" id="prog-2"></div>
+      <div class="progress-dot" id="prog-3"></div>
+    </div>
+
+    <!-- Step 1: OpenAI -->
+    <div class="setup-card" id="card-openai">
+      <div class="card-top">
+        <div class="card-top-left">
+          <div class="card-num">1</div>
+          <span class="card-title">OpenAI API Key</span>
+        </div>
+        <span class="card-badge badge-optional" id="badge-openai">Optional</span>
+      </div>
+      <p class="card-desc">Powers AI daily plans, natural language chat, weekly summaries, and smart task extraction from emails.</p>
+      <div class="features">
+        <div class="feature"><span class="feature-icon">🤖</span> AI Daily Plans</div>
+        <div class="feature"><span class="feature-icon">💬</span> Chat with Janjak</div>
+        <div class="feature"><span class="feature-icon">📊</span> Weekly AI Summaries</div>
+        <div class="feature"><span class="feature-icon">📧</span> Email → Tasks</div>
+      </div>
+      <div class="input-group" style="margin-top:16px">
+        <label class="input-label">API Key</label>
+        <input type="password" id="openai-key" placeholder="sk-..." autocomplete="off">
+        <div class="help">Get a key at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveOpenAI()">Save Key</button>
+      </div>
+      <div class="msg" id="msg-openai"></div>
+    </div>
+
+    <!-- Step 2: GitHub -->
+    <div class="setup-card" id="card-github">
+      <div class="card-top">
+        <div class="card-top-left">
+          <div class="card-num">2</div>
+          <span class="card-title">GitHub Token</span>
+        </div>
+        <span class="card-badge badge-optional" id="badge-github">Optional</span>
+      </div>
+      <p class="card-desc">See your open PRs, review requests, assigned issues, and notifications right in the dashboard.</p>
+      <div class="steps">
+        <div class="steps-title">How to create a token:</div>
+        <ol>
+          <li>Go to <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a></li>
+          <li>Click <strong>Generate new token (classic)</strong></li>
+          <li>Name it "Janjak", select scopes: <strong>repo</strong> + <strong>notifications</strong></li>
+          <li>Click Generate and paste the token below</li>
+        </ol>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Personal Access Token</label>
+        <input type="password" id="github-token" placeholder="ghp_..." autocomplete="off">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveGitHub()">Save Token</button>
+      </div>
+      <div class="msg" id="msg-github"></div>
+    </div>
+
+    <!-- Step 3: Google -->
+    <div class="setup-card" id="card-google">
+      <div class="card-top">
+        <div class="card-top-left">
+          <div class="card-num">3</div>
+          <span class="card-title">Google Calendar & Email</span>
+        </div>
+        <span class="card-badge badge-optional" id="badge-google">Optional</span>
+      </div>
+      <p class="card-desc">Connect Google to see your calendar in the dashboard, get meeting alerts, and scan emails for tasks.</p>
+      <div class="steps">
+        <div class="steps-title">How to set up Google:</div>
+        <ol>
+          <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console → Credentials</a></li>
+          <li>Create a project (or use an existing one)</li>
+          <li>Enable <strong>Gmail API</strong> + <strong>Google Calendar API</strong></li>
+          <li>Create <strong>OAuth 2.0 Client ID</strong> (Desktop app)</li>
+          <li>Download the JSON file and paste its contents below</li>
+        </ol>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Credentials JSON</label>
+        <textarea id="google-creds" placeholder='Paste the contents of your downloaded JSON file here...'></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="saveGoogle()">Save Credentials</button>
+        <button class="btn btn-secondary" id="btn-google-auth" onclick="authGoogle()" style="display:none">🔐 Authenticate</button>
+      </div>
+      <div class="help" id="google-auth-help" style="display:none;margin-top:8px">
+        After saving credentials, click <strong>Authenticate</strong> to authorize Janjak.
+        A browser window will open for Google sign-in.
+      </div>
+      <div class="msg" id="msg-google"></div>
+    </div>
+
+    <!-- Done -->
+    <div class="footer">
+      <button class="footer-btn" onclick="openDashboard()">🚀 Open Janjak Dashboard</button>
+      <p class="footer-text">You can always come back to this page with <code style="color:var(--accent2)">janjak setup</code></p>
+    </div>
+
+  </div>
+
+  <script>
+    const API = "";
+
+    // ─── Load current status ───
+    async function loadStatus() {
+      try {
+        const res = await fetch(API + "/api/setup/status");
+        const s = await res.json();
+        updateCard("openai", s.openaiKey === "configured", s.openaiKeyPreview);
+        updateCard("github", s.githubToken === "configured", s.githubTokenPreview);
+        updateGoogleCard(s.googleCreds, s.googleAuth);
+        updateProgress(s);
+      } catch {
+        // Server not ready yet, retry
+        setTimeout(loadStatus, 1000);
+      }
+    }
+
+    function updateCard(name, configured, preview) {
+      const card = document.getElementById("card-" + name);
+      const badge = document.getElementById("badge-" + name);
+      if (configured) {
+        card.classList.add("done");
+        card.classList.remove("active");
+        badge.textContent = "✓ Configured";
+        badge.className = "card-badge badge-done";
+        // Show preview
+        const input = document.getElementById(name === "openai" ? "openai-key" : "github-token");
+        if (input && preview) input.placeholder = preview;
+      }
+    }
+
+    function updateGoogleCard(credsStatus, authStatus) {
+      const card = document.getElementById("card-google");
+      const badge = document.getElementById("badge-google");
+      const authBtn = document.getElementById("btn-google-auth");
+      const authHelp = document.getElementById("google-auth-help");
+
+      if (credsStatus === "configured") {
+        authBtn.style.display = "";
+        authHelp.style.display = "";
+
+        if (authStatus === "authenticated") {
+          card.classList.add("done");
+          badge.textContent = "✓ Connected";
+          badge.className = "card-badge badge-done";
+        } else {
+          badge.textContent = "Needs Auth";
+          badge.className = "card-badge badge-required";
+        }
+      }
+    }
+
+    function updateProgress(s) {
+      const steps = [
+        s.openaiKey === "configured",
+        s.githubToken === "configured",
+        s.googleCreds === "configured" && s.googleAuth === "authenticated",
+      ];
+      steps.forEach((done, i) => {
+        const dot = document.getElementById("prog-" + (i + 1));
+        dot.classList.toggle("done", done);
+      });
+    }
+
+    // ─── Save actions ───
+    async function saveOpenAI() {
+      const key = document.getElementById("openai-key").value.trim();
+      if (!key) return showMsg("openai", "Please enter a key", "error");
+      try {
+        const res = await fetch(API + "/api/setup/openai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showMsg("openai", "✓ OpenAI key saved!", "success");
+          loadStatus();
+        } else {
+          showMsg("openai", data.error || "Failed to save", "error");
+        }
+      } catch { showMsg("openai", "Connection error", "error"); }
+    }
+
+    async function saveGitHub() {
+      const token = document.getElementById("github-token").value.trim();
+      if (!token) return showMsg("github", "Please enter a token", "error");
+      try {
+        const res = await fetch(API + "/api/setup/github", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showMsg("github", "✓ GitHub token saved!", "success");
+          loadStatus();
+        } else {
+          showMsg("github", data.error || "Failed to save", "error");
+        }
+      } catch { showMsg("github", "Connection error", "error"); }
+    }
+
+    async function saveGoogle() {
+      const creds = document.getElementById("google-creds").value.trim();
+      if (!creds) return showMsg("google", "Please paste your credentials JSON", "error");
+      try {
+        const res = await fetch(API + "/api/setup/google", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credentials: creds })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showMsg("google", "✓ Credentials saved! Click Authenticate to connect.", "success");
+          loadStatus();
+        } else {
+          showMsg("google", data.error || "Failed to save", "error");
+        }
+      } catch { showMsg("google", "Connection error", "error"); }
+    }
+
+    async function authGoogle() {
+      showMsg("google", "🔐 Auth flow started — check the terminal where Janjak is running, then paste the code there.", "success");
+      try {
+        await fetch(API + "/api/setup/google/auth", { method: "POST" });
+      } catch {}
+    }
+
+    function openDashboard() {
+      window.open("http://localhost:3547", "_blank");
+    }
+
+    // ─── Helpers ───
+    function showMsg(card, text, type) {
+      const el = document.getElementById("msg-" + card);
+      el.textContent = text;
+      el.className = "msg show msg-" + type;
+      if (type === "success") setTimeout(() => el.classList.remove("show"), 4000);
+    }
+
+    // Load on start
+    loadStatus();
+  </script>
+</body>
+</html>

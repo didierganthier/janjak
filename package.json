@@ -1,0 +1,55 @@
+{
+  "name": "janjak",
+  "version": "1.0.0",
+  "description": "Ambient Intelligence Assistant — an AI that understands what you're doing, predicts what you need, and subtly acts.",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "janjak": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "ai",
+    "cli",
+    "focus",
+    "productivity",
+    "ambient-intelligence"
+  ],
+  "author": "Didier Ganthier",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/didierganthier/janjak.git"
+  },
+  "homepage": "https://github.com/didierganthier/janjak#readme",
+  "bugs": {
+    "url": "https://github.com/didierganthier/janjak/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node-cron": "^3.0.11",
+    "active-win": "^8.2.1",
+    "better-sqlite3": "^12.8.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "dotenv": "^17.3.1",
+    "googleapis": "^171.4.0",
+    "node-cron": "^4.2.1",
+    "open": "^11.0.0",
+    "openai": "^6.33.0",
+    "ora": "^9.3.0",
+    "sqlite3": "^6.0.1",
+    "typescript": "^6.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0"
+  }
+}
