@@ -13,6 +13,16 @@ import { looksLikeTaskCreation, createTaskFromText, formatCreatedTask } from "./
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
+const CHARACTER_NAMES: Record<string, string> = {
+  janjak: "Janjak",
+  "janèt": "Janèt",
+};
+
+function getCharacterName(): string {
+  const key = getState("character") ?? "janjak";
+  return CHARACTER_NAMES[key] ?? "Janjak";
+}
+
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env["OPENAI_API_KEY"];
   if (!apiKey) {
@@ -165,6 +175,7 @@ function detectAndSaveName(question: string, response: string): void {
 export async function askJanjak(question: string, history: ChatMessage[] = []): Promise<string> {
   const client = getOpenAIClient();
   let context = buildContext();
+  const characterName = getCharacterName();
 
   // Enrich with email data when the question is email-related
   if (isEmailRelated(question)) {
@@ -172,7 +183,9 @@ export async function askJanjak(question: string, history: ChatMessage[] = []): 
     if (emailCtx) context += emailCtx;
   }
 
-  const systemPrompt = `You are Janjak, a personal AI assistant that knows everything about the user's digital work habits. You have access to their complete activity history, focus scores, behavioral patterns, and tasks.
+  const systemPrompt = `You are ${characterName}, a personal AI assistant that knows everything about the user's digital work habits. You have access to their complete activity history, focus scores, behavioral patterns, and tasks.
+
+Your name is ${characterName}. Always refer to yourself as ${characterName}, never as "Janjak" unless that is your name.
 
 Answer questions naturally, conversationally, and with specific data. Be concise (2-5 sentences usually). Use numbers and specifics from the data — don't be vague.
 

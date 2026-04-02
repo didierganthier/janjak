@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { askJanjak, type ChatMessage } from "./chat.js";
+import { getState } from "./db.js";
 import { enterFocusMode, enterBreakMode, exitFocusMode } from "./engine.js";
 import { startPomodoro } from "./pomo.js";
 import { processInbox } from "./tasks.js";
@@ -23,6 +24,20 @@ import { looksLikeTaskCreation, createTaskFromText, formatCreatedTask, formatSpo
 const JANJAK_DIR = join(homedir(), ".janjak");
 const RECORDER_BIN = join(JANJAK_DIR, "janjak-recorder");
 const RECORDING_PATH = join(JANJAK_DIR, ".voice-recording.wav");
+
+// ─── Character System ───────────────────────────────────────────
+
+const CHARACTERS = {
+  janjak: { name: "Janjak", voice: "onyx", emoji: "🧔🏾" },
+  janèt:  { name: "Janèt",  voice: "nova", emoji: "👩🏾" },
+} as const;
+
+type CharacterKey = keyof typeof CHARACTERS;
+
+function getActiveCharacter() {
+  const key = (getState("character") ?? "janjak") as CharacterKey;
+  return CHARACTERS[key] ?? CHARACTERS.janjak;
+}
 
 // ─── Swift Mic Recorder (auto-compiled) ─────────────────────────
 
@@ -215,7 +230,7 @@ async function speak(text: string, voice?: string): Promise<void> {
 
   try {
     const client = new OpenAI({ apiKey });
-    const ttsVoice = (voice as any) ?? "nova"; // nova = warm & natural female voice
+    const ttsVoice = (voice as any) ?? getActiveCharacter().voice;
 
     const mp3 = await client.audio.speech.create({
       model: "tts-1",
@@ -301,7 +316,10 @@ export async function voiceCommand(options: {
 } = {}): Promise<void> {
   const { loop = false, voice, maxSeconds = 30 } = options;
 
-  console.log("\n🎤 Janjak Voice Mode");
+  const char = getActiveCharacter();
+  const effectiveVoice = voice ?? char.voice;
+
+  console.log(`\n🎤 ${char.emoji} ${char.name} Voice Mode`);
   console.log("═".repeat(40));
 
   // Build recorder if needed

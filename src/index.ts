@@ -15,7 +15,7 @@ import { enterFocusMode, enterBreakMode, exitFocusMode, flushSession } from "./e
 import { getStatusReport, startMonitor, stopMonitor } from "./monitor.js";
 import { getDayOverview, getAIDailyPlan } from "./planner.js";
 import { getCurrentTrack, pauseMusic, resumeMusic } from "./music.js";
-import { closeDb } from "./db.js";
+import { closeDb, setState, getState } from "./db.js";
 import { runOAuthFlow, isAuthenticated } from "./gmail-auth.js";
 import { processInbox, formatInboxReport, formatAllTasks, updateTaskStatus } from "./tasks.js";
 import { formatInsights } from "./memory.js";
@@ -571,6 +571,42 @@ program
     console.log("\n☕ Brewing your morning briefing...\n");
     const briefing = await generateMorningBriefing({ ai: opts.ai });
     console.log(briefing);
+  });
+
+// ── character ────────────────────────────────────────────────────────
+program
+  .command("character")
+  .description("Choose your AI assistant: Janjak (male) or Janèt (female)")
+  .argument("[name]", "Character name: janjak or janèt")
+  .action(async (name?: string) => {
+    const current = getState("character") ?? "janjak";
+    const chars: Record<string, { name: string; voice: string; emoji: string; desc: string }> = {
+      janjak: { name: "Janjak", voice: "onyx", emoji: "🧔🏾", desc: "A calm, deep-voiced male assistant" },
+      "janèt":  { name: "Janèt",  voice: "nova", emoji: "👩🏾", desc: "A warm, natural-voiced female assistant" },
+    };
+
+    if (!name) {
+      console.log("\n🎭 Choose your AI assistant:\n");
+      for (const [key, c] of Object.entries(chars)) {
+        const active = key === current ? "  ← active" : "";
+        console.log(`  ${c.emoji}  ${c.name} — ${c.desc} (voice: ${c.voice})${active}`);
+      }
+      console.log(`\n  Usage: janjak character janjak`);
+      console.log(`         janjak character janèt\n`);
+      return;
+    }
+
+    const key = name.toLowerCase();
+    if (!chars[key]) {
+      console.log(`\n  ❌ Unknown character "${name}". Choose: janjak or janèt\n`);
+      return;
+    }
+
+    setState("character", key);
+    const c = chars[key]!;
+    console.log(`\n  ${c.emoji}  Switched to ${c.name}!`);
+    console.log(`  ${c.desc} (voice: ${c.voice})`);
+    console.log(`\n  Try: janjak voice\n`);
   });
 
 // ── voice ───────────────────────────────────────────────────────────
