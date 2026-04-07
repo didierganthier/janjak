@@ -37,6 +37,8 @@ import { draftAndOpen, generateReply, getTaskById, formatReplyPreview } from "./
 import { voiceCommand } from "./voice.js";
 import { generateMorningBriefing } from "./morning.js";
 import { createTaskFromText, formatCreatedTask } from "./nl-tasks.js";
+import { startDaemon, stopDaemon, isDaemonRunning, getDaemonPid, DAEMON_PORT } from "./daemon.js";
+import { buildOverlay, launchOverlay } from "./overlay.js";
 
 const program = new Command();
 
@@ -622,6 +624,112 @@ program
       voice: opts.voice,
       maxSeconds: parseInt(opts.seconds, 10),
     });
+  });
+
+// ── daemon ──────────────────────────────────────────────────────────
+const daemonCmd = program
+  .command("daemon")
+  .description("Run Janjak as an always-on background daemon with HTTP API.");
+
+daemonCmd
+  .command("start")
+  .description("Start the Janjak daemon in the background")
+  .option("--foreground", "Run in foreground (don't detach)")
+  .action(async (opts) => {
+    if (isDaemonRunning()) {
+      console.log(`\n🧠 Daemon is already running (PID: ${getDaemonPid()}, port ${DAEMON_PORT})\n`);
+      return;
+    }
+
+    if (opts.foreground) {
+      await startDaemon();
+    } else {
+      // Spawn detached daemon process
+      const { spawn: spawnProcess } = await import("node:child_process");
+      const { fileURLToPath: toPath } = await import("node:url");
+      const child = spawnProcess(
+        process.execPath,
+        [
+          "--import", "tsx",
+          join(homedir(), "Desktop", "janjak", "src", "daemon-entry.ts"),
+        ],
+        {
+          detached: true,
+          stdio: "ignore",
+          cwd: join(homedir(), "Desktop", "janjak"),
+          env: { ...process.env },
+        }
+      );
+      child.unref();
+      // Give it a moment to start
+      await new Promise(r => setTimeout(r, 1500));
+      if (isDaemonRunning()) {
+        console.log(`\n🧠 Janjak daemon started (PID: ${getDaemonPid()}, port ${DAEMON_PORT})`);
+        console.log(`   API:  http://localhost:${DAEMON_PORT}/api/health`);
+        console.log(`   Web:  http://localhost:${DAEMON_PORT}\n`);
+      } else {
+        console.log("⚠️  Daemon may have failed to start. Try: janjak daemon start --foreground");
+      }
+    }
+  });
+
+daemonCmd
+  .command("stop")
+  .description("Stop the running Janjak daemon")
+  .action(() => {
+    if (stopDaemon()) {
+      console.log("\n✅ Daemon stopped.\n");
+    } else {
+      console.log("\n⚠️  No daemon running.\n");
+    }
+  });
+
+daemonCmd
+  .command("status")
+  .description("Check if the Janjak daemon is running")
+  .action(async () => {
+    if (isDaemonRunning()) {
+      const pid = getDaemonPid();
+      console.log(`\n🧠 Daemon is running (PID: ${pid}, port ${DAEMON_PORT})`);
+      try {
+        const resp = await fetch(`http://localhost:${DAEMON_PORT}/api/health`);
+        const data = await resp.json() as Record<string, unknown>;
+        console.log(`   Character: ${data.character}`);
+        console.log(`   Uptime: ${Math.round(Number(data.uptime) / 60)} minutes\n`);
+      } catch {
+        console.log("   (API not responding)\n");
+      }
+    } else {
+      console.log("\n💤 Daemon is not running. Start with: janjak daemon start\n");
+    }
+  });
+
+// ── overlay ─────────────────────────────────────────────────────────
+program
+  .command("overlay")
+  .description("Launch the Janjak overlay (⌘⇧J from anywhere to activate)")
+  .action(async () => {
+    if (!isDaemonRunning()) {
+      console.log("⚠️  Starting daemon first...");
+      const { spawn: spawnProcess } = await import("node:child_process");
+      const child = spawnProcess(
+        process.execPath,
+        [
+          "--import", "tsx",
+          join(homedir(), "Desktop", "janjak", "src", "daemon-entry.ts"),
+        ],
+        {
+          detached: true,
+          stdio: "ignore",
+          cwd: join(homedir(), "Desktop", "janjak"),
+          env: { ...process.env },
+        }
+      );
+      child.unref();
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    await buildOverlay();
+    launchOverlay();
   });
 
 program.parseAsync(process.argv).catch((err) => {
