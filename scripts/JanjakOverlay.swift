@@ -37,15 +37,42 @@ struct HealthResponse: Codable {
 class AudioRecorder: NSObject {
     private var recorder: AVAudioRecorder?
     private let outputURL: URL
+    private var micPermissionGranted = false
     
     override init() {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".janjak")
         outputURL = dir.appendingPathComponent(".overlay-recording.wav")
         super.init()
+        requestMicPermission()
+    }
+    
+    func requestMicPermission() {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            micPermissionGranted = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                self?.micPermissionGranted = granted
+                if granted {
+                    print("🎙️ Microphone access granted")
+                } else {
+                    print("⚠️  Microphone access denied")
+                }
+            }
+        default:
+            micPermissionGranted = false
+            print("⚠️  Microphone access denied — grant in System Settings > Privacy > Microphone")
+        }
     }
     
     func startRecording() -> Bool {
+        guard micPermissionGranted else {
+            print("⚠️  No microphone permission")
+            requestMicPermission()
+            return false
+        }
+        
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
             AVSampleRateKey: 16000.0,
@@ -100,11 +127,14 @@ class OverlayViewController: NSViewController {
     private let iconLabel = NSTextField(labelWithString: "🧠")
     private let statusLabel = NSTextField(labelWithString: "Press Space to talk to Janjak")
     private let transcriptLabel = NSTextField(wrappingLabelWithString: "")
-    private let responseLabel = NSTextField(wrappingLabelWithString: "")
+    private let scrollView = NSScrollView()
+    private let responseTextView = NSTextView()
     private let hintLabel = NSTextField(labelWithString: "ESC to close")
     
     private let audioRecorder = AudioRecorder()
     private var dismissTimer: Timer?
+    private var keyDownMonitor: Any?
+    private var keyUpMonitor: Any?
     
     override func loadView() {
         let frame = NSRect(x: 0, y: 0, width: 480, height: 200)
@@ -143,14 +173,28 @@ class OverlayViewController: NSViewController {
         transcriptLabel.isHidden = true
         containerView.addSubview(transcriptLabel)
         
-        // Response
-        responseLabel.font = NSFont.systemFont(ofSize: 14, weight: .regular)
-        responseLabel.textColor = .white
-        responseLabel.alignment = .center
-        responseLabel.maximumNumberOfLines = 4
-        responseLabel.translatesAutoresizingMaskIntoConstraints = false
-        responseLabel.isHidden = true
-        containerView.addSubview(responseLabel)
+        // Response (scrollable text view)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = false
+        scrollView.scrollerStyle = .overlay
+        scrollView.isHidden = true
+        
+        responseTextView.isEditable = false
+        responseTextView.isSelectable = true
+        responseTextView.drawsBackground = false
+        responseTextView.textColor = .white
+        responseTextView.font = NSFont.systemFont(ofSize: 14, weight: .regular)
+        responseTextView.alignment = .center
+        responseTextView.textContainerInset = NSSize(width: 0, height: 0)
+        responseTextView.isVerticallyResizable = true
+        responseTextView.isHorizontallyResizable = false
+        responseTextView.textContainer?.widthTracksTextView = true
+        
+        scrollView.documentView = responseTextView
+        containerView.addSubview(scrollView)
         
         // Hint
         hintLabel.font = NSFont.systemFont(ofSize: 11)
@@ -173,10 +217,10 @@ class OverlayViewController: NSViewController {
             transcriptLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
             transcriptLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
             
-            responseLabel.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            responseLabel.topAnchor.constraint(equalTo: transcriptLabel.bottomAnchor, constant: 8),
-            responseLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            responseLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            scrollView.topAnchor.constraint(equalTo: transcriptLabel.bottomAnchor, constant: 8),
+            scrollView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            scrollView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            scrollView.bottomAnchor.constraint(equalTo: hintLabel.topAnchor, constant: -8),
             
             hintLabel.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             hintLabel.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -10),
@@ -192,7 +236,7 @@ class OverlayViewController: NSViewController {
                 self.iconLabel.stringValue = "🧠"
                 self.statusLabel.stringValue = "Press Space to talk to Janjak"
                 self.transcriptLabel.isHidden = true
-                self.responseLabel.isHidden = true
+                self.scrollView.isHidden = true
                 self.hintLabel.stringValue = "ESC to close"
                 self.resizeWindow(height: 140)
                 
@@ -200,7 +244,7 @@ class OverlayViewController: NSViewController {
                 self.iconLabel.stringValue = "🎙️"
                 self.statusLabel.stringValue = "Listening... (release Space to send)"
                 self.transcriptLabel.isHidden = true
-                self.responseLabel.isHidden = true
+                self.scrollView.isHidden = true
                 self.hintLabel.stringValue = "ESC to cancel"
                 self.resizeWindow(height: 140)
                 
@@ -208,7 +252,7 @@ class OverlayViewController: NSViewController {
                 self.iconLabel.stringValue = "🤔"
                 self.statusLabel.stringValue = "Thinking..."
                 self.transcriptLabel.isHidden = true
-                self.responseLabel.isHidden = true
+                self.scrollView.isHidden = true
                 self.hintLabel.stringValue = ""
                 self.resizeWindow(height: 140)
                 
@@ -217,18 +261,19 @@ class OverlayViewController: NSViewController {
                 self.statusLabel.stringValue = character
                 self.transcriptLabel.stringValue = "You: \(transcript)"
                 self.transcriptLabel.isHidden = false
-                // Truncate long responses for display
-                let displayResponse = response.count > 300 ? String(response.prefix(300)) + "..." : response
-                self.responseLabel.stringValue = displayResponse
-                self.responseLabel.isHidden = false
+                self.responseTextView.string = response
+                self.scrollView.isHidden = false
                 self.hintLabel.stringValue = "Space to talk again · ESC to close"
-                self.resizeWindow(height: 260)
+                // Calculate height based on content (cap at 500)
+                let textHeight = self.calculateTextHeight(response, width: 440)
+                let totalHeight = min(max(200, 140 + textHeight + 40), 500)
+                self.resizeWindow(height: totalHeight)
                 
             case .error(let msg):
                 self.iconLabel.stringValue = "⚠️"
                 self.statusLabel.stringValue = msg
                 self.transcriptLabel.isHidden = true
-                self.responseLabel.isHidden = true
+                self.scrollView.isHidden = true
                 self.hintLabel.stringValue = "Space to retry · ESC to close"
                 self.resizeWindow(height: 140)
             }
@@ -244,34 +289,68 @@ class OverlayViewController: NSViewController {
         window.setFrame(frame, display: true, animate: true)
     }
     
-    // MARK: - Keyboard Events
-    
-    override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case 53: // ESC
-            if audioRecorder.isRecording {
-                _ = audioRecorder.stopRecording()
-                currentState = .idle
-            } else {
-                hideOverlay()
-            }
-        case 49: // Space
-            if case .listening = currentState { return } // Already listening
-            startListening()
-        default:
-            super.keyDown(with: event)
-        }
-    }
-    
-    override func keyUp(with event: NSEvent) {
-        if event.keyCode == 49 { // Space released
-            if case .listening = currentState {
-                stopAndProcess()
-            }
-        }
+    private func calculateTextHeight(_ text: String, width: CGFloat) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: 14, weight: .regular)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let boundingRect = (text as NSString).boundingRect(
+            with: NSSize(width: width, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attrs
+        )
+        return ceil(boundingRect.height)
     }
     
     override var acceptsFirstResponder: Bool { true }
+    
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        view.window?.makeFirstResponder(self)
+        installKeyMonitors()
+    }
+    
+    // MARK: - Keyboard Events via Local Monitor
+    // Borderless windows need local event monitors for reliable key handling
+    
+    func installKeyMonitors() {
+        removeKeyMonitors()
+        
+        keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, self.view.window?.isVisible == true else { return event }
+            switch event.keyCode {
+            case 53: // ESC
+                if self.audioRecorder.isRecording {
+                    _ = self.audioRecorder.stopRecording()
+                    self.currentState = .idle
+                } else {
+                    self.hideOverlay()
+                }
+                return nil // consume event
+            case 49: // Space
+                if event.isARepeat { return nil } // ignore key repeat
+                if case .listening = self.currentState { return nil }
+                self.startListening()
+                return nil
+            default:
+                return event
+            }
+        }
+        
+        keyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            guard let self = self, self.view.window?.isVisible == true else { return event }
+            if event.keyCode == 49 { // Space released
+                if case .listening = self.currentState {
+                    self.stopAndProcess()
+                }
+                return nil
+            }
+            return event
+        }
+    }
+    
+    func removeKeyMonitors() {
+        if let m = keyDownMonitor { NSEvent.removeMonitor(m); keyDownMonitor = nil }
+        if let m = keyUpMonitor { NSEvent.removeMonitor(m); keyUpMonitor = nil }
+    }
     
     // MARK: - Voice Flow
     
@@ -412,6 +491,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Quit Janjak Overlay", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = menu
         
+        // Show overlay on launch + make it receive key events
+        overlayWindow.makeKeyAndOrderFront(nil)
+        overlayWindow.makeFirstResponder(overlayVC)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        
         print("🧠 Janjak Overlay ready — press ⌘⇧J from anywhere")
     }
     
@@ -455,7 +539,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             overlayWindow.orderOut(nil)
         } else {
             overlayWindow.makeKeyAndOrderFront(nil)
+            overlayWindow.makeFirstResponder(overlayVC)
             NSApplication.shared.activate(ignoringOtherApps: true)
+            overlayVC.installKeyMonitors()
         }
     }
     

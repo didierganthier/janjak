@@ -198,7 +198,6 @@ async function transcribeAudio(): Promise<string> {
   const transcription = await client.audio.transcriptions.create({
     file: createReadStream(RECORDING_PATH),
     model: "whisper-1",
-    // No language param — Whisper auto-detects language (supports 50+ languages)
   });
 
   return transcription.text.trim();
