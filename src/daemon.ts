@@ -33,6 +33,8 @@ import { processInbox } from "./tasks.js";
 import { getSpokenBriefing, generateMorningBriefing } from "./morning.js";
 import { startMonitor, stopMonitor, getStatusReport } from "./monitor.js";
 import { startProactiveEngine, stopProactiveEngine } from "./proactive.js";
+import { executeAutonomously, isAutonomyEnabled, setAutonomyEnabled, isTierEnabled, getActionLog, cancelPending, getPendingActions } from "./autonomy.js";
+import { getAllWorkflows, setWorkflowEnabled, getWorkflowLog, runWorkflowById, isWorkflowsEnabled, setWorkflowsEnabled } from "./workflows.js";
 import type { TaskStatus } from "./types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -458,6 +460,81 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  // ── Autonomy ──
+  if (path === "/api/autonomy") {
+    if (method === "GET") {
+      json(res, {
+        enabled: isAutonomyEnabled(),
+        tiers: { auto: isTierEnabled("auto"), confirm: isTierEnabled("confirm") },
+        pending: getPendingActions(),
+        log: getActionLog().slice(-20),
+      });
+      return;
+    }
+    if (method === "POST") {
+      const body = await readBody(req);
+      const action = String(body.action ?? "").trim();
+      if (action === "enable") {
+        setAutonomyEnabled(true);
+        json(res, { ok: true, enabled: true });
+      } else if (action === "disable") {
+        setAutonomyEnabled(false);
+        for (const id of getPendingActions()) cancelPending(id);
+        json(res, { ok: true, enabled: false });
+      } else if (action === "cancel") {
+        const pending = getPendingActions();
+        for (const id of pending) cancelPending(id);
+        json(res, { ok: true, cancelled: pending.length });
+      } else {
+        json(res, { error: "Invalid action. Use: enable, disable, cancel" }, 400);
+      }
+      return;
+    }
+  }
+
+  // ── Workflows ──
+  if (path === "/api/workflows") {
+    if (method === "GET") {
+      json(res, {
+        enabled: isWorkflowsEnabled(),
+        workflows: getAllWorkflows().map(w => ({
+          id: w.id, name: w.name, description: w.description,
+          trigger: w.trigger, enabled: w.enabled, builtin: w.builtin,
+        })),
+        log: getWorkflowLog().slice(-20),
+      });
+      return;
+    }
+    if (method === "POST") {
+      const body = await readBody(req);
+      const action = String(body.action ?? "").trim();
+      if (action === "enable" || action === "disable") {
+        const wfId = String(body.id ?? "").trim();
+        if (!wfId) { json(res, { error: "Missing 'id'" }, 400); return; }
+        setWorkflowEnabled(wfId, action === "enable");
+        json(res, { ok: true, id: wfId, enabled: action === "enable" });
+      } else if (action === "run") {
+        const wfId = String(body.id ?? "").trim();
+        if (!wfId) { json(res, { error: "Missing 'id'" }, 400); return; }
+        const result = await runWorkflowById(wfId);
+        if (result) {
+          json(res, { ok: true, result });
+        } else {
+          json(res, { error: "Workflow not found" }, 404);
+        }
+      } else if (action === "on") {
+        setWorkflowsEnabled(true);
+        json(res, { ok: true, enabled: true });
+      } else if (action === "off") {
+        setWorkflowsEnabled(false);
+        json(res, { ok: true, enabled: false });
+      } else {
+        json(res, { error: "Invalid action. Use: enable, disable, run, on, off" }, 400);
+      }
+      return;
+    }
+  }
+
   // ── Health ──
   if (path === "/api/health") {
     json(res, { ok: true, daemon: true, port: PORT, character: getCharacter().name, uptime: process.uptime() });
@@ -506,11 +583,21 @@ export function startDaemon(): Promise<void> {
       // Start background monitoring
       startMonitor(10000);
 
+      // Start proactive engine with autonomous execution
+      startProactiveEngine(async (alert) => {
+        await executeAutonomously(alert);
+      });
+
+      if (isAutonomyEnabled()) {
+        console.log(`   🤖 Autonomy: ON`);
+      }
+
       resolve();
     });
 
     const shutdown = () => {
       console.log("\n\n👋 Daemon shutting down...");
+      stopProactiveEngine();
       stopMonitor();
       try { unlinkSync(PID_FILE); } catch {}
       server.close();

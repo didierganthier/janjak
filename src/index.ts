@@ -33,6 +33,7 @@ import { startWebDashboard } from "./web.js";
 import { launchMenuBar, buildMenuBar } from "./menubar.js";
 import { startSetupWizard } from "./setup.js";
 import { startProactiveEngine, stopProactiveEngine, formatAlert, type ProactiveAlert } from "./proactive.js";
+import { executeAutonomously, isAutonomyEnabled, setAutonomyEnabled, setTierEnabled, formatAutonomyStatus, formatActionLog, cancelPending, getPendingActions, type SafetyTier } from "./autonomy.js";
 import { draftAndOpen, generateReply, getTaskById, formatReplyPreview } from "./reply.js";
 import { voiceCommand } from "./voice.js";
 import { generateMorningBriefing } from "./morning.js";
@@ -121,6 +122,7 @@ program
 
     console.log("👁️  Janjak is watching. Ambient mode active.");
     if (useNotify) console.log("   🔔 Desktop notifications ON");
+    if (isAutonomyEnabled()) console.log("   🤖 Autonomy ON — Janjak will act on its own");
     console.log("   Press Ctrl+C to stop.\n");
 
     // Show initial status
@@ -155,11 +157,18 @@ program
     });
 
     // Start proactive alert engine (checks every 30s)
-    startProactiveEngine((alert: ProactiveAlert) => {
+    startProactiveEngine(async (alert: ProactiveAlert) => {
+      // Try autonomous execution first
+      const handled = await executeAutonomously(alert);
+
       const formatted = formatAlert(alert);
-      recentAlerts.push(formatted);
+      if (handled) {
+        recentAlerts.push(`🤖 ${formatted}`);
+      } else {
+        recentAlerts.push(formatted);
+      }
       if (recentAlerts.length > 10) recentAlerts.shift();
-      if (useNotify) {
+      if (useNotify && !handled) {
         sendNotification(alert.message, "Janjak", alert.title);
       }
     });
@@ -255,6 +264,31 @@ program
     const days = parseInt(opts.days, 10);
     const report = formatProjectsReport(days);
     console.log(report);
+  });
+
+// ── browser ────────────────────────────────────────────────────────
+import { formatBrowserReport, getOpenTabs } from "./browser.js";
+
+program
+  .command("browser")
+  .description("Show browser usage breakdown — time spent on each site/category today.")
+  .option("--tabs", "Show currently open tabs")
+  .action((opts) => {
+    if (opts.tabs) {
+      const tabs = getOpenTabs();
+      if (tabs.length === 0) {
+        console.log("\n  No open browser tabs detected.\n");
+        return;
+      }
+      console.log(`\n🌐 Open Browser Tabs (${tabs.length})\n`);
+      for (const tab of tabs) {
+        const title = tab.title.length > 50 ? tab.title.slice(0, 47) + "..." : tab.title;
+        console.log(`  ${tab.browser.padEnd(8)} ${tab.domain.padEnd(28)} ${title}`);
+      }
+      console.log();
+      return;
+    }
+    console.log(formatBrowserReport());
   });
 
 // ── dash ───────────────────────────────────────────────────────────
@@ -624,6 +658,205 @@ program
       voice: opts.voice,
       maxSeconds: parseInt(opts.seconds, 10),
     });
+  });
+
+// ── autonomy ────────────────────────────────────────────────────────
+const autonomyCmd = program
+  .command("autonomy")
+  .description("Control Janjak's autonomous actions. Let it act without being told.");
+
+autonomyCmd
+  .command("on")
+  .description("Enable autonomous mode — Janjak will execute safe actions on its own")
+  .action(() => {
+    setAutonomyEnabled(true);
+    console.log("\n🤖 Autonomy ENABLED. Janjak will now act on its own.");
+    console.log("   ⚡ Auto actions (focus, break, music) execute immediately.");
+    console.log("   ⏳ Confirm actions (meetings) execute after 10s delay.");
+    console.log("\n   Use `janjak autonomy status` to see what's active.");
+    console.log("   Use `janjak autonomy off` to disable.\n");
+  });
+
+autonomyCmd
+  .command("off")
+  .description("Disable autonomous mode — Janjak will only suggest actions")
+  .action(() => {
+    setAutonomyEnabled(false);
+    // Cancel any pending confirms
+    for (const id of getPendingActions()) cancelPending(id);
+    console.log("\n🤖 Autonomy DISABLED. Janjak will only suggest actions.\n");
+  });
+
+autonomyCmd
+  .command("status")
+  .description("Show autonomy configuration, registered actions, and pending actions")
+  .action(() => {
+    console.log(formatAutonomyStatus());
+  });
+
+autonomyCmd
+  .command("log")
+  .description("Show recent autonomous actions taken by Janjak")
+  .action(() => {
+    console.log(formatActionLog());
+  });
+
+autonomyCmd
+  .command("tier")
+  .description("Enable or disable a specific safety tier: auto | confirm")
+  .argument("<tier>", "Safety tier: auto or confirm")
+  .argument("<state>", "on or off")
+  .action((tier: string, state: string) => {
+    if (tier !== "auto" && tier !== "confirm") {
+      console.log("Invalid tier. Choose: auto or confirm");
+      return;
+    }
+    const enabled = state === "on";
+    setTierEnabled(tier as SafetyTier, enabled);
+    console.log(`\n${enabled ? "✅" : "❌"} ${tier} tier ${enabled ? "enabled" : "disabled"}.\n`);
+  });
+
+autonomyCmd
+  .command("cancel")
+  .description("Cancel all pending confirm-tier actions")
+  .action(() => {
+    const pending = getPendingActions();
+    if (pending.length === 0) {
+      console.log("\n  No pending actions to cancel.\n");
+      return;
+    }
+    for (const id of pending) cancelPending(id);
+    console.log(`\n  ❌ Cancelled ${pending.length} pending action(s).\n`);
+  });
+
+// ── workflow ────────────────────────────────────────────────────────
+import { getAllWorkflows, setWorkflowEnabled, formatWorkflowList, formatWorkflowLog, runWorkflowById, saveUserWorkflow, removeUserWorkflow, isWorkflowsEnabled, setWorkflowsEnabled, type TriggerType } from "./workflows.js";
+
+const workflowCmd = program
+  .command("workflow")
+  .description("Manage automated workflows. Janjak runs shell commands when context changes.");
+
+workflowCmd
+  .command("list")
+  .description("Show all workflows (built-in + custom)")
+  .action(() => {
+    console.log(formatWorkflowList());
+  });
+
+workflowCmd
+  .command("log")
+  .description("Show recent workflow executions")
+  .action(() => {
+    console.log(formatWorkflowLog());
+  });
+
+workflowCmd
+  .command("enable")
+  .description("Enable a workflow by ID")
+  .argument("<id>", "Workflow ID")
+  .action((id: string) => {
+    if (setWorkflowEnabled(id, true)) {
+      console.log(`\n  ✅ Workflow "${id}" enabled.\n`);
+    } else {
+      console.log(`\n  ❌ Workflow "${id}" not found.\n`);
+    }
+  });
+
+workflowCmd
+  .command("disable")
+  .description("Disable a workflow by ID")
+  .argument("<id>", "Workflow ID")
+  .action((id: string) => {
+    if (setWorkflowEnabled(id, false)) {
+      console.log(`\n  ❌ Workflow "${id}" disabled.\n`);
+    } else {
+      console.log(`\n  ❌ Workflow "${id}" not found.\n`);
+    }
+  });
+
+workflowCmd
+  .command("run")
+  .description("Manually trigger a workflow by ID")
+  .argument("<id>", "Workflow ID")
+  .action(async (id: string) => {
+    console.log(`\n  ⚙️  Running "${id}"...\n`);
+    const result = await runWorkflowById(id);
+    if (!result) {
+      console.log(`  ❌ Workflow "${id}" not found.`);
+      return;
+    }
+    const icon = result.success ? "✅" : "❌";
+    console.log(`  ${icon} Exit code: ${result.exitCode} (${result.durationMs}ms)`);
+    if (result.stdout.trim()) {
+      console.log(`\n  Output:`);
+      for (const line of result.stdout.trim().split("\n").slice(-10)) {
+        console.log(`    ${line}`);
+      }
+    }
+    if (result.stderr.trim() && !result.success) {
+      console.log(`\n  ⚠️  Error: ${result.stderr.trim().split("\n")[0]}`);
+    }
+    console.log();
+  });
+
+workflowCmd
+  .command("add")
+  .description("Create a custom workflow. E.g.: janjak workflow add my-wf focus_start \"echo hello\"")
+  .argument("<id>", "Unique workflow ID (e.g. slack-status)")
+  .argument("<trigger>", "Trigger type: focus_start, break_start, idle_detected, return_from_idle, project_switch, activity_change, long_session, energy_low")
+  .argument("<command>", "Shell command to run")
+  .option("-n, --name <name>", "Display name")
+  .option("-d, --desc <desc>", "Description")
+  .option("-c, --cooldown <minutes>", "Cooldown in minutes", "5")
+  .action((id: string, trigger: string, command: string, opts: { name?: string; desc?: string; cooldown: string }) => {
+    const validTriggers = ["activity_change", "focus_start", "focus_end", "break_start", "break_end", "long_session", "idle_detected", "return_from_idle", "project_switch", "energy_low", "meeting_soon"];
+    if (!validTriggers.includes(trigger)) {
+      console.log(`\n  ❌ Invalid trigger "${trigger}".`);
+      console.log(`  Valid triggers: ${validTriggers.join(", ")}\n`);
+      return;
+    }
+    saveUserWorkflow({
+      id,
+      name: opts.name ?? id,
+      description: opts.desc ?? `Custom workflow: ${id}`,
+      trigger: { type: trigger as TriggerType },
+      command,
+      enabled: true,
+      cooldownMs: parseInt(opts.cooldown, 10) * 60_000,
+      notify: true,
+    });
+    console.log(`\n  ✅ Workflow "${id}" created!`);
+    console.log(`     Trigger: ${trigger}`);
+    console.log(`     Command: ${command}`);
+    console.log(`     Saved to: ~/.janjak/workflows/${id}.json\n`);
+  });
+
+workflowCmd
+  .command("remove")
+  .description("Remove a custom workflow")
+  .argument("<id>", "Workflow ID to remove")
+  .action((id: string) => {
+    if (removeUserWorkflow(id)) {
+      console.log(`\n  ✅ Workflow "${id}" removed.\n`);
+    } else {
+      console.log(`\n  ❌ Workflow "${id}" not found (only custom workflows can be removed).\n`);
+    }
+  });
+
+workflowCmd
+  .command("on")
+  .description("Enable the workflow system globally")
+  .action(() => {
+    setWorkflowsEnabled(true);
+    console.log("\n  ✅ Workflow system enabled.\n");
+  });
+
+workflowCmd
+  .command("off")
+  .description("Disable the workflow system globally")
+  .action(() => {
+    setWorkflowsEnabled(false);
+    console.log("\n  ❌ Workflow system disabled.\n");
   });
 
 // ── daemon ──────────────────────────────────────────────────────────

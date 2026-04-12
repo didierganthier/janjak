@@ -7,6 +7,7 @@ import { getTasks } from "./db.js";
 import { getActivityEmoji } from "./classifier.js";
 import { getBehavioralProfile } from "./memory.js";
 import { getTodayEvents, getFreeSlots } from "./calendar.js";
+import { formatBrowserSummary } from "./browser.js";
 import type { ActivityState } from "./types.js";
 
 function getDisplayName(): string {
@@ -52,6 +53,12 @@ export function getDayOverview(): string {
   }
 
   output += `\n${"─".repeat(40)}`;
+
+  // Browser usage summary
+  const browserSummary = formatBrowserSummary();
+  if (browserSummary) {
+    output += browserSummary;
+  }
 
   // Smart suggestions from behavioral memory
   const profile = getBehavioralProfile();

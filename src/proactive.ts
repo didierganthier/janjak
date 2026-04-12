@@ -18,6 +18,7 @@ import { getMemoryNudge, getBehavioralProfile } from "./memory.js";
 import { getCurrentStreak } from "./streak.js";
 import { getTasks, getTodayStats } from "./db.js";
 import { isAuthenticated } from "./gmail-auth.js";
+import { triggerMeetingWorkflows } from "./workflows.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -142,6 +143,17 @@ async function checkCalendar(): Promise<ProactiveAlert[]> {
       }
     }
   } catch { /* calendar not available */ }
+
+  // Trigger meeting-related workflows
+  try {
+    const meetEvents = await getUpcomingEvents(20);
+    for (const ev of meetEvents) {
+      if (ev.status === "upcoming" && ev.minutesUntil > 0 && ev.minutesUntil <= 15) {
+        triggerMeetingWorkflows(ev.minutesUntil).catch(() => {});
+        break; // only trigger once per check cycle
+      }
+    }
+  } catch {}
 
   return alerts;
 }

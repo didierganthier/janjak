@@ -91,6 +91,24 @@ janjak stop
 | `janjak draft <id>` | Draft + open reply in Gmail. |
 | `janjak remind "<text>"` | Create a task + calendar event from natural language. |
 
+### Autonomy & Workflows
+
+| Command | Description |
+|---------|-------------|
+| `janjak autonomy on` | Enable autonomous mode — Janjak acts on its own. |
+| `janjak autonomy off` | Disable autonomous mode. |
+| `janjak autonomy status` | Show autonomy config, registered actions, pending. |
+| `janjak autonomy log` | Show recent autonomous actions taken. |
+| `janjak autonomy tier auto off` | Disable a specific safety tier. |
+| `janjak autonomy cancel` | Cancel pending confirm-tier actions. |
+| `janjak workflow list` | Show all workflows (built-in + custom). |
+| `janjak workflow enable <id>` | Enable a workflow. |
+| `janjak workflow disable <id>` | Disable a workflow. |
+| `janjak workflow run <id>` | Manually trigger a workflow. |
+| `janjak workflow log` | Show recent workflow executions. |
+| `janjak workflow add <id> <trigger> "<cmd>"` | Create a custom workflow. |
+| `janjak workflow remove <id>` | Remove a custom workflow. |
+
 ### Voice, Briefing & Web
 
 | Command | Description |
@@ -132,6 +150,8 @@ src/
 ├── dashboard.ts    # Interactive real-time TUI dashboard (ANSI)
 ├── web.ts          # Web dashboard server (Express-like HTTP)
 ├── menubar.ts      # macOS menu bar app (Swift NSStatusBar)
+├── autonomy.ts     # Autonomous action executor (safety-tiered)
+├── workflows.ts    # Workflow automation engine (trigger → shell command)
 ├── reply.ts        # AI email reply drafter
 ├── autostart.ts    # macOS LaunchAgent for auto-start at login
 ├── setup.ts        # Interactive setup wizard
@@ -165,6 +185,8 @@ web/
 14. **Interactive Dashboard** — Full-screen TUI with live panels (status, score, tasks, music, projects, nudges)
 15. **Auto-Start** — macOS LaunchAgent starts Janjak at login, runs `watch` in background
 16. **Database** — SQLite stores sessions, tasks, pomodoros, project sessions, state. Builds your behavioral memory over time.
+17. **Autonomy** — Safety-tiered action executor: auto (immediate), confirm (10s delay), suggest (notify only)
+18. **Workflows** — Context-triggered shell command runner with blocked command safety checks, env var injection, and cooldowns
 
 ---
 
@@ -244,6 +266,93 @@ All AI features use **gpt-4o-mini** for fast, cheap inference. Requires `OPENAI_
 - **`janjak remind "..."`** — Natural language task + Google Calendar event creation
 - **`janjak voice`** — Talk to Janjak like Siri. Supports 50+ languages, runs actions (break, focus, inbox scan)
 - **`janjak morning`** — AI morning briefing: calendar, inbox, tasks, focus trends, daily plan
+
+---
+
+## 🤖 Autonomy & Workflows
+
+Janjak can act on its own — no command needed. The autonomy system executes safe actions based on proactive alerts, and the workflow engine runs shell commands when your context changes.
+
+### Try It Now — Quick Test
+
+```bash
+# 1. See what autonomous actions are available
+janjak autonomy status
+
+# 2. See all workflows (built-in + custom)
+janjak workflow list
+
+# 3. Manually run a workflow to see it work
+janjak workflow run git-status-on-return
+
+# 4. Create a custom workflow (runs when you enter focus mode)
+janjak workflow add hello-focus focus_start "echo '🎯 Focus mode! Let\'s go!' && date"
+
+# 5. Test your custom workflow
+janjak workflow run hello-focus
+
+# 6. Enable autonomy — Janjak will now act on proactive alerts
+janjak autonomy on
+
+# 7. Start watching — autonomy + workflows fire automatically
+janjak watch --notify
+
+# 8. In another terminal, trigger focus mode and see your workflow fire:
+janjak focus
+
+# 9. Check what happened
+janjak autonomy log
+janjak workflow log
+
+# 10. Clean up when done
+janjak workflow remove hello-focus
+janjak autonomy off
+```
+
+### Autonomy Safety Tiers
+
+| Tier | Behavior | Actions |
+|------|----------|--------|
+| ⚡ **Auto** | Executes immediately | Enter focus, take break, pause/resume music |
+| ⏳ **Confirm** | Notifies first, 10s delay (cancellable) | Join Google Meet / Zoom / Teams |
+| 💬 **Suggest** | Advisory only (notification) | Everything else |
+
+All autonomous actions are logged and you get a macOS notification showing what was done.
+
+### Built-in Workflows
+
+| Workflow | Trigger | Default | Description |
+|----------|---------|---------|-------------|
+| Git Stash Before Meeting | Meeting in 5m | ✅ On | Auto-stashes uncommitted changes |
+| Git Status on Return | Return from idle | ✅ On | Shows changed files + branch |
+| Log Project Switch | Project switch | ✅ On | Logs context switches |
+| Run Tests After Long Session | 45m coding | ❌ Off | Runs `npm test` |
+| macOS DND in Focus Mode | Focus start | ❌ Off | Toggles Do Not Disturb |
+| macOS DND Off on Break | Break start | ❌ Off | Turns off DND |
+
+### Custom Workflows
+
+Create your own workflows that run shell commands when your context changes:
+
+```bash
+# Quit Slack when entering focus mode
+janjak workflow add quit-slack focus_start 'osascript -e "tell application \"Slack\" to quit"'
+
+# Update Slack status when you start focusing
+janjak workflow add slack-status focus_start 'curl -s -X POST https://slack.com/api/users.profile.set -H "Authorization: Bearer $SLACK_TOKEN" -d "profile={\"status_text\":\"Deep work\",\"status_emoji\":\":dart:\"}"'
+
+# Git commit WIP before meetings
+janjak workflow add auto-wip meeting_soon 'cd "$(git rev-parse --show-toplevel)" && git add -A && git commit -m "WIP: auto-save before meeting" --allow-empty' --cooldown 30
+
+# Log energy level drops
+janjak workflow add energy-log energy_low 'echo "$(date): energy dropped to $JANJAK_ENERGY during $JANJAK_ACTIVITY" >> ~/.janjak/energy.log'
+```
+
+**Available triggers:** `focus_start`, `focus_end`, `break_start`, `break_end`, `activity_change`, `long_session`, `idle_detected`, `return_from_idle`, `project_switch`, `meeting_soon`, `energy_low`
+
+**Context env vars** injected into every workflow: `$JANJAK_ACTIVITY`, `$JANJAK_FOCUS_MODE`, `$JANJAK_PROJECT`, `$JANJAK_ENERGY`, `$JANJAK_SESSION_MINUTES`, `$JANJAK_IDLE_MINUTES`
+
+Custom workflows are saved as JSON in `~/.janjak/workflows/`.
 
 ---
 
@@ -359,6 +468,12 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 - [x] Menu Bar App (macOS native NSStatusBar)
 - [x] Proactive Notification Engine (7 signal sources)
 - [x] One-Click Installer (`install.sh` + `janjak setup`)
+- [x] Autonomous Actions (safety-tiered auto/confirm/suggest)
+- [x] Workflow Automations (trigger → shell command, built-in + custom)
+- [ ] Learning Loop (adapt autonomy based on user cancellations)
+- [ ] Multi-device Context (iPhone/Watch location + motion signals)
+- [ ] Plugin System (`~/.janjak/plugins/` for community extensions)
+- [ ] Agent Mode (chain API calls + code analysis autonomously)
 - [ ] WhatsApp Intelligence (analyze chats, detect urgency)
 - [ ] Cross-platform: Linux support via D-Bus
 

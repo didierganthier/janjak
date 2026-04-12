@@ -10,7 +10,7 @@ const DB_PATH = join(DATA_DIR, "janjak.db");
 
 let db: Database.Database | null = null;
 
-function getDb(): Database.Database {
+export function getDb(): Database.Database {
   if (db) return db;
 
   mkdirSync(DATA_DIR, { recursive: true });

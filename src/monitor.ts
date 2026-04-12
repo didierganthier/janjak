@@ -1,6 +1,8 @@
 // ─── Ambient Monitor: Background polling loop ─────────────────────
 import { poll, getNudge, getStatus, formatStatus } from "./engine.js";
 import { getCurrentTrack } from "./music.js";
+import { evaluateWorkflows } from "./workflows.js";
+import { getOpenTabs, recordBrowserSnapshot, formatBrowserSummary } from "./browser.js";
 
 type MonitorCallback = (message: string) => void;
 type RenderCallback = (status: string) => void;
@@ -35,6 +37,15 @@ export function startMonitor(
         onRender(display);
       }
 
+      // Evaluate workflow triggers on every tick
+      await evaluateWorkflows();
+
+      // Track browser tabs
+      try {
+        const tabs = getOpenTabs();
+        recordBrowserSnapshot(tabs, Math.round(pollIntervalMs / 1000));
+      } catch { /* browser tracking is non-critical */ }
+
       const nudge = getNudge();
 
       // Only emit a nudge if it's different from the last one
@@ -68,6 +79,11 @@ export async function getStatusReport(): Promise<string> {
   const track = await getCurrentTrack();
   if (track) {
     report += `\n  🎵 Now playing: ${track}`;
+  }
+
+  const browserLine = formatBrowserSummary();
+  if (browserLine) {
+    report += browserLine;
   }
 
   const nudge = getNudge();

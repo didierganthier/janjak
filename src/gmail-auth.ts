@@ -87,9 +87,24 @@ export async function getAuthenticatedClient() {
 
     // Refresh if expired
     if (stored.expiry_date && stored.expiry_date < Date.now()) {
-      const { credentials } = await oauth2Client.refreshAccessToken();
-      saveTokens(credentials as StoredTokens);
-      oauth2Client.setCredentials(credentials);
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        saveTokens(credentials as StoredTokens);
+        oauth2Client.setCredentials(credentials);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes("invalid_grant")) {
+          // Token revoked or expired — delete stale tokens
+          try { const { unlinkSync } = await import("node:fs"); unlinkSync(TOKENS_PATH); } catch {}
+          throw new Error(
+            "Gmail token expired or revoked.\n" +
+            "Run: janjak login\n" +
+            "  (If your Google Cloud app is in 'Testing' mode, tokens expire after 7 days.\n" +
+            "   Publish the app or re-login periodically.)"
+          );
+        }
+        throw err;
+      }
     }
 
     return oauth2Client;
