@@ -35,7 +35,7 @@ import { startSetupWizard } from "./setup.js";
 import { startProactiveEngine, stopProactiveEngine, formatAlert, type ProactiveAlert } from "./proactive.js";
 import { executeAutonomously, isAutonomyEnabled, setAutonomyEnabled, setTierEnabled, formatAutonomyStatus, formatActionLog, cancelPending, getPendingActions, type SafetyTier } from "./autonomy.js";
 import { draftAndOpen, generateReply, getTaskById, formatReplyPreview } from "./reply.js";
-import { voiceCommand } from "./voice.js";
+import { voiceCommand, getVoiceLanguageMode, setVoiceLanguageMode, formatVoiceLanguageMode, type VoiceLanguageMode } from "./voice.js";
 import { generateMorningBriefing } from "./morning.js";
 import { createTaskFromText, formatCreatedTask } from "./nl-tasks.js";
 import { startDaemon, stopDaemon, isDaemonRunning, getDaemonPid, DAEMON_PORT } from "./daemon.js";
@@ -658,6 +658,30 @@ program
       voice: opts.voice,
       maxSeconds: parseInt(opts.seconds, 10),
     });
+  });
+
+// ── voice-lang ─────────────────────────────────────────────────────
+program
+  .command("voice-lang")
+  .description("Configure voice recognition language mode for reliability.")
+  .argument("[mode]", "en-only | en-fr")
+  .action((mode?: string) => {
+    const current = getVoiceLanguageMode();
+
+    if (!mode) {
+      console.log(`\n🌐 Current voice language mode: ${formatVoiceLanguageMode(current)}`);
+      console.log("\n   Use: janjak voice-lang en-only");
+      console.log("        janjak voice-lang en-fr\n");
+      return;
+    }
+
+    if (mode !== "en-only" && mode !== "en-fr") {
+      console.log('\n❌ Invalid mode. Choose: "en-only" or "en-fr"\n');
+      return;
+    }
+
+    setVoiceLanguageMode(mode as VoiceLanguageMode);
+    console.log(`\n✅ Voice language mode set to: ${formatVoiceLanguageMode(mode as VoiceLanguageMode)}\n`);
   });
 
 // ── autonomy ────────────────────────────────────────────────────────

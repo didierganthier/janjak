@@ -15,6 +15,7 @@ import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { askJanjak, type ChatMessage } from "./chat.js";
 import { getState } from "./db.js";
+import { setState } from "./db.js";
 import { enterFocusMode, enterBreakMode, exitFocusMode } from "./engine.js";
 import { startPomodoro } from "./pomo.js";
 import { processInbox } from "./tasks.js";
@@ -33,6 +34,25 @@ const CHARACTERS = {
 } as const;
 
 type CharacterKey = keyof typeof CHARACTERS;
+
+export type VoiceLanguageMode = "en-only" | "en-fr";
+
+const VOICE_LANGUAGE_MODE_KEY = "voice_language_mode";
+
+export function getVoiceLanguageMode(): VoiceLanguageMode {
+  const mode = getState(VOICE_LANGUAGE_MODE_KEY);
+  return mode === "en-fr" ? "en-fr" : "en-only";
+}
+
+export function setVoiceLanguageMode(mode: VoiceLanguageMode): void {
+  setState(VOICE_LANGUAGE_MODE_KEY, mode);
+}
+
+export function formatVoiceLanguageMode(mode = getVoiceLanguageMode()): string {
+  return mode === "en-only"
+    ? "EN only (most reliable)"
+    : "EN + FR (auto-detect within allowed languages)";
+}
 
 function getActiveCharacter() {
   const key = (getState("character") ?? "janjak") as CharacterKey;
@@ -179,7 +199,7 @@ function recordAudio(maxSeconds = 30): boolean {
 
 // ─── Speech-to-Text (Whisper) ───────────────────────────────────
 
-async function transcribeAudio(): Promise<string> {
+async function transcribeAudio(mode: VoiceLanguageMode): Promise<string> {
   const apiKey = process.env["OPENAI_API_KEY"];
   if (!apiKey) {
     throw new Error("OpenAI API key required for voice commands. Add OPENAI_API_KEY to ~/.janjak/.env");
@@ -195,12 +215,29 @@ async function transcribeAudio(): Promise<string> {
     return ""; // Too short, will be caught by the empty-transcript check
   }
 
+  if (mode === "en-only") {
+    const transcription = await client.audio.transcriptions.create({
+      file: createReadStream(RECORDING_PATH),
+      model: "whisper-1",
+      language: "en",
+    });
+    return transcription.text.trim();
+  }
+
   const transcription = await client.audio.transcriptions.create({
     file: createReadStream(RECORDING_PATH),
     model: "whisper-1",
+    response_format: "verbose_json",
   });
 
-  return transcription.text.trim();
+  const verbose = transcription as unknown as { text?: string; language?: string };
+  const detectedLanguage = (verbose.language ?? "").toLowerCase();
+
+  if (detectedLanguage && detectedLanguage !== "en" && detectedLanguage !== "fr") {
+    throw new Error(`Detected unsupported language: ${detectedLanguage}. Allowed: EN or FR.`);
+  }
+
+  return (verbose.text ?? "").trim();
 }
 
 // ─── Text-to-Speech (OpenAI TTS) ────────────────────────────────
@@ -316,10 +353,12 @@ export async function voiceCommand(options: {
   const { loop = false, voice, maxSeconds = 30 } = options;
 
   const char = getActiveCharacter();
+  const languageMode = getVoiceLanguageMode();
   const effectiveVoice = voice ?? char.voice;
 
   console.log(`\n🎤 ${char.emoji} ${char.name} Voice Mode`);
   console.log("═".repeat(40));
+  console.log(`  🌐 Language mode: ${formatVoiceLanguageMode(languageMode)}`);
 
   // Build recorder if needed
   if (!ensureRecorder()) {
@@ -339,7 +378,7 @@ export async function voiceCommand(options: {
     // Transcribe
     let transcript: string;
     try {
-      transcript = await transcribeAudio();
+      transcript = await transcribeAudio(languageMode);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       if (msg.includes("too short")) {
