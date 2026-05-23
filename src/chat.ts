@@ -10,6 +10,7 @@ import { getTodayScore, getWeeklyScores } from "./score.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import { fetchRecentEmails } from "./gmail-client.js";
 import { looksLikeTaskCreation, createTaskFromText, formatCreatedTask } from "./nl-tasks.js";
+import { recall, capture, formatHitsForPrompt } from "./memory/recall.js";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -183,6 +184,15 @@ export async function askJanjak(question: string, history: ChatMessage[] = []): 
     if (emailCtx) context += emailCtx;
   }
 
+  // Semantic recall: pull relevant past memories before generating.
+  let memoryBlock = "";
+  try {
+    const hits = await recall(question, { limit: 6 });
+    memoryBlock = formatHitsForPrompt(hits);
+  } catch {
+    memoryBlock = "";
+  }
+
   const systemPrompt = `You are ${characterName}, a personal AI assistant that knows everything about the user's digital work habits. You have access to their complete activity history, focus scores, behavioral patterns, and tasks.
 
 Your name is ${characterName}. Always refer to yourself as ${characterName}, never as "Janjak" unless that is your name.
@@ -201,7 +211,7 @@ Use 1-2 emoji naturally. Don't be overly enthusiastic — be like a smart, calm 
 Maintain conversation context — if the user refers to something from a previous message ("this", "that", "it"), use the conversation history to understand what they mean.
 Respond in the same language the user speaks to you.
 
-USER DATA:
+${memoryBlock ? memoryBlock + "\n\n" : ""}USER DATA:
 ${context}`;
 
   // Build messages with conversation history for context
@@ -222,6 +232,18 @@ ${context}`;
 
   // Try to detect & persist user name
   detectAndSaveName(question, answer);
+
+  // Capture the Q+A pair as a semantic memory (best-effort, never blocks).
+  try {
+    await capture({
+      type: "ai_chat",
+      text: `Q: ${question}\nA: ${answer}`,
+      metadata: { character: characterName },
+      importance: 0.5,
+    });
+  } catch {
+    // ignore — embeddings are best-effort
+  }
 
   return answer;
 }

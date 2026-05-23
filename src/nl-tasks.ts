@@ -7,6 +7,7 @@
 
 import OpenAI from "openai";
 import { insertTask } from "./db.js";
+import { capture } from "./memory/recall.js";
 import { getState } from "./db.js";
 import type { ExtractedTask } from "./types.js";
 import { createCalendarEvent } from "./calendar.js";
@@ -137,6 +138,20 @@ export async function createTaskFromText(text: string): Promise<CreatedTask | nu
   };
 
   const id = insertTask(task);
+
+  // Best-effort: store as semantic memory.
+  try {
+    const memText = `Task: ${task.title}${task.deadline ? `\nDeadline: ${task.deadline}` : ""}\nPriority: ${task.priority}${task.person ? `\nPerson: ${task.person}` : ""}${task.description ? `\n${task.description}` : ""}`;
+    await capture({
+      type: "task",
+      text: memText,
+      sourceId: String(id),
+      metadata: { source: "nl", priority: task.priority, person: task.person },
+      importance: task.priority === "high" ? 0.8 : 0.6,
+    });
+  } catch {
+    // ignore
+  }
 
   // Create Google Calendar event if we have a deadline
   let calendarEventCreated = false;

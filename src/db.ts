@@ -83,6 +83,20 @@ export function getDb(): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_project_sessions_ts ON project_sessions(timestamp);
     CREATE INDEX IF NOT EXISTS idx_project_sessions_project ON project_sessions(project);
+
+    CREATE TABLE IF NOT EXISTS memory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      source_id TEXT,
+      text TEXT NOT NULL,
+      embedding BLOB NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      timestamp INTEGER NOT NULL,
+      importance REAL NOT NULL DEFAULT 0.5
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_timestamp ON memory(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_memory_type ON memory(type);
   `);
 
   return db;
@@ -161,6 +175,32 @@ export function closeDb(): void {
     db.close();
     db = null;
   }
+}
+
+/** Clear all tracked runtime data while keeping local config files intact. */
+export function resetTrackedData(): void {
+  const d = getDb();
+  const tables = [
+    "sessions",
+    "state",
+    "tasks",
+    "processed_emails",
+    "pomodoros",
+    "project_sessions",
+    "browser_usage",
+    "memory",
+  ];
+
+  for (const table of tables) {
+    const exists = d
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(table) as { name: string } | undefined;
+    if (exists) {
+      d.prepare(`DELETE FROM ${table}`).run();
+    }
+  }
+
+  d.pragma("wal_checkpoint(TRUNCATE)");
 }
 
 // ─── V2: Task Operations ────────────────────────────────────────

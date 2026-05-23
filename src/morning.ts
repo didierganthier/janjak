@@ -182,6 +182,18 @@ async function getAISuggestion(sections: Record<string, string>): Promise<string
     const client = new OpenAI({ apiKey });
     const profile = getBehavioralProfile();
 
+    let memoryBlock = "";
+    try {
+      const { recall, formatHitsForPrompt } = await import("./memory/recall.js");
+      const hits = await recall(
+        `morning briefing context: ${sections.calendar} ${sections.tasks}`,
+        { limit: 5 }
+      );
+      memoryBlock = formatHitsForPrompt(hits);
+    } catch {
+      memoryBlock = "";
+    }
+
     const context = `
 USER: ${getUserName()}
 TIME: ${new Date().toLocaleString()}
@@ -200,6 +212,7 @@ BEHAVIORAL PATTERNS:
 - Peak coding hours: ${profile.peakCodingHours.map(h => h + ":00").join(", ") || "unknown"}
 - Avg daily coding: ${profile.avgCodingMinutes}min
 - Tracked days: ${profile.trackedDays}
+${memoryBlock ? "\n" + memoryBlock : ""}
 `.trim();
 
     const response = await client.chat.completions.create({

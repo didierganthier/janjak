@@ -2,8 +2,7 @@
 import { fetchRecentEmails } from "./gmail-client.js";
 import { parseEmailBatch, generateInboxSummary } from "./email-parser.js";
 import { insertTask, getTasks, updateTaskStatus, isEmailProcessed, markEmailProcessed } from "./db.js";
-import type { ExtractedTask, TaskStatus } from "./types.js";
-
+import type { ExtractedTask, TaskStatus } from "./types.js";import { capture } from "./memory/recall.js";
 export async function processInbox(): Promise<{
   summary: string;
   newTasks: ExtractedTask[];
@@ -64,6 +63,27 @@ export async function processInbox(): Promise<{
       const id = insertTask(extracted);
       extracted.id = id;
       newTasks.push(extracted);
+
+      // Best-effort: capture this task + its source email as a semantic memory.
+      try {
+        const memText = `Task from email: ${extracted.title}\nFrom: ${extracted.person}\nSubject: ${email.subject}\nPriority: ${extracted.priority}${extracted.deadline ? `\nDeadline: ${extracted.deadline}` : ""}${extracted.description ? `\n${extracted.description}` : ""}`;
+        await capture({
+          type: "task",
+          text: memText,
+          sourceId: String(id),
+          metadata: { person: extracted.person, priority: extracted.priority, email_id: email.id },
+          importance: extracted.priority === "high" ? 0.8 : 0.6,
+        });
+        await capture({
+          type: "email",
+          text: `From: ${email.from}\nSubject: ${email.subject}\n${(email.snippet ?? "").slice(0, 500)}`,
+          sourceId: email.id,
+          metadata: { from: email.from, subject: email.subject },
+          importance: 0.5,
+        });
+      } catch {
+        // ignore embedding failures
+      }
     }
   }
 

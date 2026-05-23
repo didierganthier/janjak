@@ -6,6 +6,8 @@
 import { config } from "dotenv";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { existsSync, rmSync } from "node:fs";
+import { createInterface } from "node:readline";
 
 // Load env vars from ~/.janjak/.env
 config({ path: join(homedir(), ".janjak", ".env") });
@@ -15,7 +17,7 @@ import { enterFocusMode, enterBreakMode, exitFocusMode, flushSession } from "./e
 import { getStatusReport, startMonitor, stopMonitor } from "./monitor.js";
 import { getDayOverview, getAIDailyPlan } from "./planner.js";
 import { getCurrentTrack, pauseMusic, resumeMusic } from "./music.js";
-import { closeDb, setState, getState } from "./db.js";
+import { closeDb, setState, getState, resetTrackedData } from "./db.js";
 import { runOAuthFlow, isAuthenticated } from "./gmail-auth.js";
 import { processInbox, formatInboxReport, formatAllTasks, updateTaskStatus } from "./tasks.js";
 import { formatInsights } from "./memory.js";
@@ -24,7 +26,7 @@ import { askJanjak } from "./chat.js";
 import { sendNotification, notificationsAvailable } from "./notify.js";
 import { startPomodoro, getPomodoroStats } from "./pomo.js";
 import { formatStreakBadge, formatStreakReport } from "./streak.js";
-import { formatProjectsReport } from "./project.js";
+import { formatProjectsReport, detectCurrentProjectNow } from "./project.js";
 import { startDashboard } from "./dashboard.js";
 import { installAutoStart, uninstallAutoStart, autoStartStatus } from "./autostart.js";
 import { formatCalendarReport } from "./calendar.js";
@@ -40,6 +42,20 @@ import { generateMorningBriefing } from "./morning.js";
 import { createTaskFromText, formatCreatedTask } from "./nl-tasks.js";
 import { startDaemon, stopDaemon, isDaemonRunning, getDaemonPid, DAEMON_PORT } from "./daemon.js";
 import { buildOverlay, launchOverlay } from "./overlay.js";
+import { getOpenWindows, formatOpenWindows } from "./windows.js";
+import { capture, recall, formatHits } from "./memory/recall.js";
+import { countMemories, deleteMemory, listMemories, type MemoryType } from "./memory/vector-store.js";
+import { ingestAll, formatIngestReport } from "./memory/ingest.js";
+
+function confirmPrompt(question: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(/^(y|yes)$/i.test(answer.trim()));
+    });
+  });
+}
 
 const program = new Command();
 
@@ -266,6 +282,176 @@ program
     console.log(report);
   });
 
+// ── project ────────────────────────────────────────────────────────
+program
+  .command("project")
+  .description("Show the project inferred from your currently active window.")
+  .action(async () => {
+    const current = await detectCurrentProjectNow();
+
+    console.log("\n📍 Current Work Context\n");
+    console.log(`  App: ${current.appName}`);
+    if (current.title) {
+      const title = current.title.length > 120 ? `${current.title.slice(0, 117)}...` : current.title;
+      console.log(`  Window: ${title}`);
+    }
+
+    if (current.project) {
+      const branch = current.branch ? ` [${current.branch}]` : "";
+      console.log(`\n  📂 Project: ${current.project}${branch}\n`);
+    } else {
+      console.log("\n  📂 Project: not detected from current window title\n");
+    }
+  });
+
+// ── windows ────────────────────────────────────────────────────────
+program
+  .command("windows")
+  .description("List currently open app windows across the machine (macOS snapshot).")
+  .option("-n, --limit <n>", "Maximum windows to show", "40")
+  .action(async (opts) => {
+    const limit = Math.max(1, parseInt(opts.limit, 10) || 40);
+    const windows = await getOpenWindows();
+    console.log(formatOpenWindows(windows, limit));
+  });
+
+// ── memory: note / recall / list / forget ──────────────────────────
+const VALID_MEMORY_TYPES: MemoryType[] = [
+  "note",
+  "session",
+  "email",
+  "task",
+  "voice",
+  "ai_chat",
+  "calendar",
+  "github",
+  "daily_summary",
+];
+
+program
+  .command("note <text...>")
+  .description("Capture a manual note into Janjak's semantic memory.")
+  .option("--importance <n>", "Importance score 0-1 (default 0.7)", "0.7")
+  .action(async (textParts: string[], opts: { importance: string }) => {
+    const text = textParts.join(" ").trim();
+    if (!text) {
+      console.error("Note text is empty.");
+      process.exit(1);
+    }
+    const importance = Math.max(0, Math.min(1, parseFloat(opts.importance) || 0.7));
+    try {
+      const id = await capture({ type: "note", text, importance, metadata: { source: "cli" } });
+      console.log(`\n  📝 Saved note #${id} (importance ${importance.toFixed(2)})\n`);
+    } catch (err) {
+      console.error(`\n  Failed to save note: ${(err as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("recall <query...>")
+  .description("Semantic search across everything Janjak remembers.")
+  .option("-n, --limit <n>", "Max hits to return", "8")
+  .option("-t, --type <type>", "Filter by memory type (note, email, voice, ...)")
+  .option("-d, --days <n>", "Only consider memories from the last N days")
+  .option("--min-importance <n>", "Filter by minimum importance (0-1)")
+  .action(async (queryParts: string[], opts: { limit: string; type?: string; days?: string; minImportance?: string }) => {
+    const query = queryParts.join(" ").trim();
+    if (!query) {
+      console.error("Query is empty.");
+      process.exit(1);
+    }
+    const limit = Math.max(1, parseInt(opts.limit, 10) || 8);
+    const searchOpts: Parameters<typeof recall>[1] = { limit };
+    if (opts.type) {
+      if (!VALID_MEMORY_TYPES.includes(opts.type as MemoryType)) {
+        console.error(`Invalid --type. Use one of: ${VALID_MEMORY_TYPES.join(", ")}`);
+        process.exit(1);
+      }
+      searchOpts.types = [opts.type as MemoryType];
+    }
+    if (opts.days) {
+      const d = parseInt(opts.days, 10);
+      if (!Number.isNaN(d) && d > 0) searchOpts.daysBack = d;
+    }
+    if (opts.minImportance) {
+      const m = parseFloat(opts.minImportance);
+      if (!Number.isNaN(m)) searchOpts.minImportance = m;
+    }
+    try {
+      const hits = await recall(query, searchOpts);
+      console.log(formatHits(hits));
+    } catch (err) {
+      console.error(`\n  Recall failed: ${(err as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("memory")
+  .description("Inspect Janjak's semantic memory store.")
+  .option("-n, --limit <n>", "Number of recent memories to show", "20")
+  .option("-t, --type <type>", "Filter by memory type")
+  .action((opts: { limit: string; type?: string }) => {
+    const limit = Math.max(1, parseInt(opts.limit, 10) || 20);
+    const type = opts.type as MemoryType | undefined;
+    if (type && !VALID_MEMORY_TYPES.includes(type)) {
+      console.error(`Invalid --type. Use one of: ${VALID_MEMORY_TYPES.join(", ")}`);
+      process.exit(1);
+    }
+    const total = countMemories();
+    const rows = listMemories(limit, type);
+    console.log(`\n🧠 Memory — ${total} total row${total === 1 ? "" : "s"}, showing ${rows.length}\n`);
+    if (rows.length === 0) {
+      console.log("  (empty)\n");
+      return;
+    }
+    for (const row of rows) {
+      const date = new Date(row.timestamp).toISOString().slice(0, 16).replace("T", " ");
+      const snippet = row.text.length > 100 ? row.text.slice(0, 97) + "..." : row.text;
+      console.log(`  [#${row.id}] ${row.type.padEnd(14)} ${date}  imp=${row.importance.toFixed(2)}`);
+      console.log(`         ${snippet.replace(/\n+/g, " ")}`);
+    }
+    console.log();
+  });
+
+program
+  .command("forget <id>")
+  .description("Delete a single memory row by id.")
+  .action((id: string) => {
+    const n = parseInt(id, 10);
+    if (Number.isNaN(n)) {
+      console.error("Invalid id.");
+      process.exit(1);
+    }
+    const ok = deleteMemory(n);
+    console.log(ok ? `\n  Deleted memory #${n}\n` : `\n  No memory found with id #${n}\n`);
+  });
+
+program
+  .command("ingest")
+  .description("Backfill semantic memory from existing tasks and sessions.")
+  .option("--tasks-only", "Only ingest tasks")
+  .option("--sessions-only", "Only ingest sessions")
+  .option("--task-limit <n>", "Max tasks to embed", "500")
+  .option("--session-days <n>", "Session lookback in days", "30")
+  .option("--session-min-minutes <n>", "Skip sessions shorter than this", "5")
+  .action(async (opts: { tasksOnly?: boolean; sessionsOnly?: boolean; taskLimit: string; sessionDays: string; sessionMinMinutes: string }) => {
+    const taskLimit = Math.max(1, parseInt(opts.taskLimit, 10) || 500);
+    const sessionDays = Math.max(1, parseInt(opts.sessionDays, 10) || 30);
+    const sessionMinMinutes = Math.max(0, parseInt(opts.sessionMinMinutes, 10) || 5);
+    const includeTasks = !opts.sessionsOnly;
+    const includeSessions = !opts.tasksOnly;
+    console.log("\n  Embedding existing data (this may take a minute)...\n");
+    try {
+      const results = await ingestAll({ taskLimit, sessionDays, sessionMinMinutes, includeTasks, includeSessions });
+      console.log(formatIngestReport(results));
+    } catch (err) {
+      console.error(`\n  Ingest failed: ${(err as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
 // ── browser ────────────────────────────────────────────────────────
 import { formatBrowserReport, getOpenTabs } from "./browser.js";
 
@@ -327,6 +513,62 @@ program
   .description("Open the setup wizard to configure API keys and integrations.")
   .action(async () => {
     await startSetupWizard();
+  });
+
+// ── reset ───────────────────────────────────────────────────────────
+program
+  .command("reset")
+  .description("Reset Janjak data and start fresh. Use --all for a full local wipe.")
+  .option("--all", "Also remove local DB files, Gmail tokens, workflows, and daemon logs")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .action(async (opts) => {
+    const full = Boolean(opts.all);
+
+    const warning = full
+      ? "\n⚠️  Full reset will wipe local Janjak data (DB, tokens, workflows, logs). Continue? (y/N) "
+      : "\n⚠️  Reset will clear tracked data (sessions, tasks, state, stats). Continue? (y/N) ";
+
+    const confirmed = opts.yes ? true : await confirmPrompt(warning);
+    if (!confirmed) {
+      console.log("\nCancelled.\n");
+      return;
+    }
+
+    if (isDaemonRunning()) {
+      stopDaemon();
+      console.log("\n🛑 Stopped daemon.");
+    }
+
+    if (!full) {
+      resetTrackedData();
+      console.log("\n✅ Janjak data reset complete.");
+      console.log("   Kept: ~/.janjak/.env, Google credentials, app binaries.\n");
+      return;
+    }
+
+    closeDb();
+
+    const home = homedir();
+    const base = join(home, ".janjak");
+    const targets = [
+      join(base, "janjak.db"),
+      join(base, "janjak.db-wal"),
+      join(base, "janjak.db-shm"),
+      join(base, "gmail-tokens.json"),
+      join(base, "daemon.log"),
+      join(base, "daemon-error.log"),
+      join(base, "workflows"),
+    ];
+
+    for (const target of targets) {
+      if (existsSync(target)) {
+        rmSync(target, { recursive: true, force: true });
+      }
+    }
+
+    console.log("\n✅ Full local reset complete.");
+    console.log("   Kept: ~/.janjak/.env and ~/.janjak/gmail-credentials.json");
+    console.log("   Next: run `janjak setup` or `janjak login` if needed.\n");
   });
 
 // ── autostart ──────────────────────────────────────────────────────

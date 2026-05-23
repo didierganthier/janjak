@@ -70,7 +70,9 @@ janjak stop
 | `janjak pomo -w 30 -s 10` | Custom work/break durations. |
 | `janjak streak` | Show your focus streak, milestones, and badges. |
 | `janjak projects` | Time spent per project (auto-detected from window titles). |
+| `janjak project` | Show the project inferred from your currently active window. |
 | `janjak projects -d 30` | Look back 30 days instead of 7. |
+| `janjak windows` | List currently open app windows across the machine (macOS snapshot). |
 | `janjak dash` | Launch the interactive real-time dashboard (TUI). |
 | `janjak dash --notify` | Dashboard with desktop notifications enabled. |
 | `janjak autostart on` | Auto-start Janjak at login (macOS LaunchAgent). |
@@ -121,6 +123,8 @@ janjak stop
 | `janjak web` | Launch the web dashboard. |
 | `janjak menubar` | Launch macOS menu bar app. |
 | `janjak setup` | Interactive setup wizard (guided configuration). |
+| `janjak reset` | Clear tracked data and start a fresh session (keeps credentials/config). |
+| `janjak reset --all` | Full local wipe: DB, tokens, workflows, and logs (keeps `.env` + Google credentials). |
 
 ---
 

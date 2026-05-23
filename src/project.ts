@@ -4,6 +4,7 @@
 
 import { logProjectSession, getProjectSummaries, getTodayProjectTime, type ProjectSummary } from "./db.js";
 import type { AppContext, ActivityState } from "./types.js";
+import { getActiveWindow } from "./context.js";
 
 let lastProject: string | null = null;
 let lastBranch = "";
@@ -117,6 +118,23 @@ export function flushProjectSession(): void {
 /** Get current detected project */
 export function getCurrentProject(): { project: string | null; branch: string } {
   return { project: lastProject, branch: lastBranch };
+}
+
+/** Detect current project directly from the active window right now. */
+export async function detectCurrentProjectNow(): Promise<{
+  project: string | null;
+  branch: string;
+  appName: string;
+  title: string;
+}> {
+  const context = await getActiveWindow();
+  const detected = detectProject(context);
+  return {
+    project: detected.project,
+    branch: detected.branch,
+    appName: context?.appName ?? "Unknown",
+    title: context?.title ?? "",
+  };
 }
 
 // ─── Display Formatters ─────────────────────────────────────────
