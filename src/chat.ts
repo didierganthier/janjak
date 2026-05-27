@@ -187,7 +187,7 @@ export async function askJanjak(question: string, history: ChatMessage[] = []): 
   // Semantic recall: pull relevant past memories before generating.
   let memoryBlock = "";
   try {
-    const hits = await recall(question, { limit: 6 });
+    const hits = await recall(question, { limit: 6, minSimilarity: 0.2 });
     memoryBlock = formatHitsForPrompt(hits);
   } catch {
     memoryBlock = "";

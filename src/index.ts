@@ -10,7 +10,7 @@ import { existsSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 // Load env vars from ~/.janjak/.env
-config({ path: join(homedir(), ".janjak", ".env") });
+config({ path: join(homedir(), ".janjak", ".env"), quiet: true });
 
 import { Command } from "commander";
 import { enterFocusMode, enterBreakMode, exitFocusMode, flushSession } from "./engine.js";
@@ -355,7 +355,8 @@ program
   .option("-t, --type <type>", "Filter by memory type (note, email, voice, ...)")
   .option("-d, --days <n>", "Only consider memories from the last N days")
   .option("--min-importance <n>", "Filter by minimum importance (0-1)")
-  .action(async (queryParts: string[], opts: { limit: string; type?: string; days?: string; minImportance?: string }) => {
+  .option("--min-similarity <n>", "Filter out weak semantic matches (0-1)", "0.18")
+  .action(async (queryParts: string[], opts: { limit: string; type?: string; days?: string; minImportance?: string; minSimilarity?: string }) => {
     const query = queryParts.join(" ").trim();
     if (!query) {
       console.error("Query is empty.");
@@ -377,6 +378,10 @@ program
     if (opts.minImportance) {
       const m = parseFloat(opts.minImportance);
       if (!Number.isNaN(m)) searchOpts.minImportance = m;
+    }
+    if (opts.minSimilarity) {
+      const s = parseFloat(opts.minSimilarity);
+      if (!Number.isNaN(s)) searchOpts.minSimilarity = Math.max(0, Math.min(1, s));
     }
     try {
       const hits = await recall(query, searchOpts);

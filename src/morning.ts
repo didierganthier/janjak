@@ -187,7 +187,7 @@ async function getAISuggestion(sections: Record<string, string>): Promise<string
       const { recall, formatHitsForPrompt } = await import("./memory/recall.js");
       const hits = await recall(
         `morning briefing context: ${sections.calendar} ${sections.tasks}`,
-        { limit: 5 }
+        { limit: 5, minSimilarity: 0.2 }
       );
       memoryBlock = formatHitsForPrompt(hits);
     } catch {

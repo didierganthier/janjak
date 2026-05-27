@@ -45,6 +45,7 @@ export interface SearchOptions {
   types?: MemoryType[];
   daysBack?: number;
   minImportance?: number;
+  minSimilarity?: number;
 }
 
 const DEFAULT_LIMIT = 8;
@@ -156,6 +157,7 @@ export function searchSimilar(
   opts: SearchOptions = {}
 ): MemoryHit[] {
   const limit = opts.limit ?? DEFAULT_LIMIT;
+  const minSimilarity = Math.max(0, Math.min(1, opts.minSimilarity ?? 0));
   const db = getDb();
 
   const clauses: string[] = [];
@@ -182,14 +184,16 @@ export function searchSimilar(
     .all(...params) as MemoryRow[];
 
   const now = Date.now();
-  const hits: MemoryHit[] = rows.map((row) => {
+  const hits: MemoryHit[] = [];
+  for (const row of rows) {
     const record = rowToRecord(row);
     const vec = blobToVector(row.embedding);
     const similarity = cosineSimilarity(queryEmbedding, vec);
+    if (similarity < minSimilarity) continue;
     const recency = recencyDecay(record.timestamp, now);
     const score = similarity * recency * (0.5 + 0.5 * record.importance);
-    return { ...record, similarity, score };
-  });
+    hits.push({ ...record, similarity, score });
+  }
 
   hits.sort((a, b) => b.score - a.score);
   return hits.slice(0, limit);
