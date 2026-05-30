@@ -7,6 +7,7 @@ import { getTodayStats, getTasks, getState } from "./db.js";
 import { getTodayScore, getWeeklyScores } from "./score.js";
 import { getCurrentStreak } from "./streak.js";
 import { getBehavioralProfile } from "./memory.js";
+import { recall, formatHitsForPrompt } from "./memory/recall.js";
 import { getTodayEvents, getFreeSlots, type CalendarEvent } from "./calendar.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import { fetchRecentEmails } from "./gmail-client.js";
@@ -330,6 +331,21 @@ export async function getSpokenBriefing(): Promise<string> {
   const weekly = getWeeklyScores(7);
   const yesterday = weekly.length >= 2 ? weekly[weekly.length - 2] : null;
 
+  let memoryBlock = "";
+  try {
+    const topTaskTitles = tasks.slice(0, 3).map((t) => t.title).join(" | ");
+    const nextMeeting = calendarData[0]?.title ?? "";
+    const recallQuery = `voice morning briefing ${nextMeeting} ${topTaskTitles}`.trim();
+    const hits = await recall(recallQuery, {
+      limit: 4,
+      minSimilarity: 0.2,
+      daysBack: 30,
+    });
+    memoryBlock = formatHitsForPrompt(hits);
+  } catch {
+    memoryBlock = "";
+  }
+
   const context = `
 ${greeting} ${name}.
 Date: ${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
@@ -339,6 +355,7 @@ Pending tasks: ${tasks.filter(t => t.status === "pending").length} (${tasks.filt
 In-progress tasks: ${tasks.filter(t => t.status === "in-progress").length}
 Yesterday's score: ${yesterday ? `${yesterday.score}/100` : "no data"}
 Streak: ${streak.days} days
+${memoryBlock ? `\n${memoryBlock}\n` : ""}
 `.trim();
 
   try {
