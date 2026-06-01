@@ -51,6 +51,18 @@ export interface SearchOptions {
 const DEFAULT_LIMIT = 8;
 const HALF_LIFE_DAYS = 30;
 
+const SOURCE_WEIGHTS: Partial<Record<MemoryType, number>> = {
+  note: 1.25,
+  ai_chat: 1.2,
+  task: 1.1,
+  email: 1.05,
+  voice: 1.05,
+  calendar: 0.95,
+  github: 0.95,
+  daily_summary: 0.9,
+  session: 0.8,
+};
+
 interface MemoryRow {
   id: number;
   type: string;
@@ -191,7 +203,8 @@ export function searchSimilar(
     const similarity = cosineSimilarity(queryEmbedding, vec);
     if (similarity < minSimilarity) continue;
     const recency = recencyDecay(record.timestamp, now);
-    const score = similarity * recency * (0.5 + 0.5 * record.importance);
+    const sourceWeight = SOURCE_WEIGHTS[record.type] ?? 1;
+    const score = similarity * recency * (0.5 + 0.5 * record.importance) * sourceWeight;
     hits.push({ ...record, similarity, score });
   }
 
