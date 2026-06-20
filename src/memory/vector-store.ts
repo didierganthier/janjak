@@ -3,6 +3,7 @@
 
 import { getDb } from "../db.js";
 import { blobToVector, vectorToBlob, EMBEDDING_DIMS } from "./embeddings.js";
+import { isRetrievable } from "../synthesis/tiers.js";
 
 export type MemoryType =
   | "note"
@@ -46,6 +47,8 @@ export interface SearchOptions {
   daysBack?: number;
   minImportance?: number;
   minSimilarity?: number;
+  /** Apply memory-tier gating: long-term/archival rows surface only if important. */
+  respectTiers?: boolean;
 }
 
 const DEFAULT_LIMIT = 8;
@@ -128,6 +131,19 @@ export function countMemories(): number {
   return row.n;
 }
 
+export function getMemoryBySource(
+  type: MemoryType,
+  sourceId: string
+): MemoryRecord | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT * FROM memory WHERE type = ? AND source_id = ? ORDER BY timestamp DESC LIMIT 1"
+    )
+    .get(type, sourceId) as MemoryRow | undefined;
+  return row ? rowToRecord(row) : null;
+}
+
 export function listMemories(limit = 20, type?: MemoryType): MemoryRecord[] {
   const db = getDb();
   const rows = type
@@ -199,6 +215,7 @@ export function searchSimilar(
   const hits: MemoryHit[] = [];
   for (const row of rows) {
     const record = rowToRecord(row);
+    if (opts.respectTiers && !isRetrievable(record, now)) continue;
     const vec = blobToVector(row.embedding);
     const similarity = cosineSimilarity(queryEmbedding, vec);
     if (similarity < minSimilarity) continue;

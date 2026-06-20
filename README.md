@@ -17,8 +17,11 @@ Built with TypeScript, SQLite, macOS AppleScript, OpenAI, and Gmail API.
 ## ⚡ Quick Start
 
 ```bash
-# Install globally
-npm link
+# Easiest — one-line installer (clones, builds, links, builds the menu bar app)
+curl -fsSL https://raw.githubusercontent.com/didierganthier/janjak/main/install.sh | bash
+
+# Or install from npm
+npm install -g janjak
 
 # Check your current state
 janjak status
@@ -32,6 +35,9 @@ janjak break
 # End session
 janjak stop
 ```
+
+> Prefer not to touch the terminal? After installing, run `janjak menubar` for the
+> macOS menu bar app or `janjak web` for the dashboard — the CLI is just the engine.
 
 ---
 
@@ -61,6 +67,47 @@ janjak stop
 | `janjak week` | Weekly focus report with daily scores and trend chart. |
 | `janjak week --ai` | Adds AI-generated weekly summary. |
 | `janjak notify` | Send a test desktop notification. |
+
+### Super Brain — Memory, Knowledge & Learning
+
+Janjak's 5-layer "super brain": it remembers, builds a model of you, learns from feedback, and consolidates over time.
+
+| Command | Description |
+|---------|-------------|
+| `janjak note "<text>"` | Capture a note into semantic memory. |
+| `janjak recall "<query>"` | Semantic search across everything Janjak remembers. |
+| `janjak recall -t <type>` | Filter recall by source (note, email, voice, calendar, …). |
+| `janjak memory` | List recent stored memories. |
+| `janjak ingest` | Backfill semantic memory from existing tasks and sessions. |
+| `janjak who "<name>"` | Profile of a person/project/topic from the knowledge graph. |
+| `janjak network "<name>"` | Show an entity's relationships and connections. |
+| `janjak entities` | List the strongest entities Janjak knows. |
+| `janjak knows` | What Janjak has learned about you — goals, preferences, routines. |
+| `janjak knows --refresh` | Re-synthesize the personal model from recent behavior first. |
+| `janjak goal add "<text>"` | Add a goal Janjak aligns its help with (`-c` category, `-p` priority, `-d` due). |
+| `janjak goal list` | List your goals (`--all` to include completed). |
+| `janjak prefer <category> <key> <value>` | State a preference explicitly (highest confidence). |
+| `janjak why [id\|last]` | Explain a decision Janjak made — full evidence trail. |
+| `janjak feedback` | Acceptance/rejection rates for Janjak's actions (`--days N`). |
+| `janjak adapt` | Run an adaptation pass — adjust behavior from captured feedback. |
+| `janjak consolidate` | Force a consolidation pass (day summary, model refresh, forgetting curve). |
+| `janjak summary today` | Synthesized summary of today. |
+| `janjak summary week` | Weekly review: what you worked on, pattern changes, new entities, goals. |
+| `janjak review` | Interactive weekly review — confirm goals & preferences to lock them in. |
+
+### Privacy & Data Control
+
+You own every byte. Everything is stored locally in SQLite at `~/.janjak/`; only embedding requests (text in, vector out) ever leave your machine.
+
+| Command | Description |
+|---------|-------------|
+| `janjak memory -t <type>` | See everything stored from a given source. |
+| `janjak note --no-embed "<text>"` | Store a sensitive note locally without sending it to the embedding API. |
+| `janjak forget <id>` | Hard-delete a single memory (and its embedding). |
+| `janjak forget --entity "<name>"` | Delete an entity and all of its related memories, mentions & relationships. |
+| `janjak forget-pref <id>` | Delete a learned preference. |
+| `janjak export` | Export all memory, entities, preferences, goals & routines as JSON. |
+| `janjak export --out <file>` | Export to a specific path. |
 
 ### Productivity — Pomodoro, Streaks & Projects
 
@@ -159,13 +206,38 @@ src/
 ├── reply.ts        # AI email reply drafter
 ├── autostart.ts    # macOS LaunchAgent for auto-start at login
 ├── setup.ts        # Interactive setup wizard
-├── db.ts           # SQLite: sessions, tasks, pomodoros, projects, state
+├── db.ts           # SQLite: sessions, tasks, memory, entities, preferences, goals, feedback, state
 ├── gmail-auth.ts   # Google OAuth2 authentication flow (Gmail + Calendar)
 ├── gmail-client.ts # Gmail API client (fetch + parse emails)
 ├── email-parser.ts # AI email analyzer (OpenAI → extract tasks)
 ├── calendar.ts     # Google Calendar (read events + create events)
 ├── github.ts       # GitHub integration (PRs, issues, notifications)
-└── tasks.ts        # Task manager (email→task pipeline + CRUD)
+├── tasks.ts        # Task manager (email→task pipeline + CRUD)
+├── privacy.ts      # Local data export (memory/entities/preferences as JSON)
+├── memory/         # Layer 1 — Semantic memory (embeddings + vector store)
+│   ├── embeddings.ts   # OpenAI text-embedding-3-small wrapper
+│   ├── vector-store.ts # SQLite BLOB vectors + cosine search + tier gating
+│   ├── recall.ts       # capture() + recall() public API
+│   └── ingest.ts       # Backfill embeddings from tasks/sessions
+├── graph/          # Layer 2 — Entity knowledge graph
+│   ├── entities.ts     # Entity CRUD, mentions, cascade delete
+│   ├── relationships.ts# Entity relationships
+│   ├── extractor.ts    # AI entity/relationship extraction
+│   └── query.ts        # Profiles, networks, prompt context
+├── personal/       # Layer 3 — Personal model
+│   ├── profile.ts      # Preferences (observed/stated/inferred + decay)
+│   ├── goals.ts        # Goals
+│   ├── routines.ts     # Routines
+│   └── synthesis.ts    # Derive model from behavior + prompt injection
+├── learning/       # Layer 4 — Learning loop
+│   ├── feedback.ts     # Capture action outcomes + acceptance rates
+│   ├── explain.ts      # Decision log powering `janjak why`
+│   └── adapt.ts        # Turn feedback into behavior changes
+└── synthesis/      # Layer 5 — Synthesis
+    ├── tiers.ts        # Memory tiers + forgetting curve
+    ├── consolidate.ts  # Promote/decay memory + entity upkeep
+    ├── daily.ts        # Nightly day summary + consolidation pass
+    └── weekly.ts       # Weekly review gathering + formatting
 web/
 ├── index.html      # Web dashboard (live charts + panels)
 └── setup.html      # Interactive setup wizard UI
@@ -204,6 +276,17 @@ web/
 
 ### Installation
 
+**Option 1 — One-line installer (recommended):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/didierganthier/janjak/main/install.sh | bash
+```
+
+**Option 2 — npm:**
+```bash
+npm install -g janjak
+```
+
+**Option 3 — From source (for development):**
 ```bash
 git clone https://github.com/didierganthier/janjak.git
 cd janjak
@@ -474,7 +557,12 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 - [x] One-Click Installer (`install.sh` + `janjak setup`)
 - [x] Autonomous Actions (safety-tiered auto/confirm/suggest)
 - [x] Workflow Automations (trigger → shell command, built-in + custom)
-- [ ] Learning Loop (adapt autonomy based on user cancellations)
+- [x] **Super Brain L1 — Semantic Memory** (embeddings + `recall` + AI context injection)
+- [x] **Super Brain L2 — Entity Graph** (people/projects/topics, `who`, `network`)
+- [x] **Super Brain L3 — Personal Model** (goals, preferences, routines, `knows`)
+- [x] **Super Brain L4 — Learning Loop** (feedback capture, adaptation, `why`)
+- [x] **Super Brain L5 — Synthesis** (daily/weekly consolidation, memory tiers, `review`)
+- [x] **Privacy Controls** (`forget --entity`, `export`, `--no-embed`)
 - [ ] Multi-device Context (iPhone/Watch location + motion signals)
 - [ ] Plugin System (`~/.janjak/plugins/` for community extensions)
 - [ ] Agent Mode (chain API calls + code analysis autonomously)
@@ -488,8 +576,6 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 **Janjak** (Haitian Creole: *Jean-Jacques*) — named in the spirit of Haitian resilience and resourcefulness. Built for builders who want an AI that works *with* them, not *at* them.
 
 Made with ❤️ by [Didier Ganthier](https://github.com/didierganthier).
-- [x] **AI Reasoning**: OpenAI integration for smart classification + daily planning
-- [ ] **Cross-platform**: Linux support via D-Bus
 
 ---
 

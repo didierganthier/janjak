@@ -7,10 +7,20 @@
   "bin": {
     "janjak": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "web",
+    "scripts",
+    "assets",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "ai",

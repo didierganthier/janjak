@@ -16,6 +16,9 @@ import { sendNotification, notificationsAvailable } from "./notify.js";
 import type { ProactiveAlert } from "./proactive.js";
 import { exec } from "node:child_process";
 import { isUrlOpen } from "./browser.js";
+import { recordFeedback } from "./learning/feedback.js";
+import { logDecision } from "./learning/explain.js";
+import { getActionTierOverride } from "./learning/adapt.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -58,13 +61,19 @@ export function getActionLog(): ActionLogEntry[] {
 
 // ─── Pending Confirm Actions ────────────────────────────────────
 
-const pendingConfirms = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingConfirms = new Map<string, { timer: ReturnType<typeof setTimeout>; actionLabel: string }>();
 
 export function cancelPending(alertId: string): boolean {
-  const timer = pendingConfirms.get(alertId);
-  if (timer) {
-    clearTimeout(timer);
+  const pending = pendingConfirms.get(alertId);
+  if (pending) {
+    clearTimeout(pending.timer);
     pendingConfirms.delete(alertId);
+    recordFeedback({
+      actionType: "autonomy",
+      actionId: pending.actionLabel,
+      outcome: "cancelled",
+      context: { alertId },
+    });
     return true;
   }
   return false;
@@ -142,6 +151,12 @@ function findAction(actionStr: string): AutonomousAction | null {
   return null;
 }
 
+/** Look up the registry (base) safety tier for an action by its label. */
+export function getActionBaseTier(label: string): SafetyTier | null {
+  const action = ACTIONS.find((a) => a.label === label);
+  return action ? action.tier : null;
+}
+
 /** Check if a URL (or a URL containing the same meeting ID) is already open in any browser */
 function isUrlOpenInBrowser(url: string): boolean {
   try {
@@ -180,15 +195,19 @@ export async function executeAutonomously(alert: ProactiveAlert): Promise<boolea
   const action = findAction(alert.action);
   if (!action) return false;
 
+  // The learning loop may have demoted this action's tier based on past
+  // rejections. Honor the override if present.
+  const effectiveTier = getActionTierOverride(action.label) ?? action.tier;
+
   // Check tier-specific enabling
-  const tierEnabled = isTierEnabled(action.tier);
+  const tierEnabled = isTierEnabled(effectiveTier);
   if (!tierEnabled) return false;
 
-  if (action.tier === "auto") {
+  if (effectiveTier === "auto") {
     return executeNow(alert, action);
   }
 
-  if (action.tier === "confirm") {
+  if (effectiveTier === "confirm") {
     return scheduleWithConfirm(alert, action);
   }
 
@@ -238,6 +257,20 @@ async function executeNow(alert: ProactiveAlert, action: AutonomousAction): Prom
       success: true,
     });
 
+    recordFeedback({
+      actionType: "autonomy",
+      actionId: action.label,
+      outcome: "accepted",
+      context: { alertId: alert.id, category: alert.category, tier: action.tier },
+    });
+    logDecision({
+      decisionId: `autonomy-${alert.id}-${Date.now()}`,
+      type: "autonomy",
+      description: `Auto-executed: ${action.label}`,
+      evidence: { signals: [alert.category, alert.title], result },
+      confidence: 0.8,
+    });
+
     // Notify the user about what was done
     if (notificationsAvailable()) {
       sendNotification(
@@ -257,6 +290,12 @@ async function executeNow(alert: ProactiveAlert, action: AutonomousAction): Prom
       tier: action.tier,
       result: err instanceof Error ? err.message : "Unknown error",
       success: false,
+    });
+    recordFeedback({
+      actionType: "autonomy",
+      actionId: action.label,
+      outcome: "rejected",
+      context: { alertId: alert.id, error: err instanceof Error ? err.message : "unknown" },
     });
     return false;
   }
@@ -282,7 +321,16 @@ function scheduleWithConfirm(alert: ProactiveAlert, action: AutonomousAction): b
     await executeNow(alert, action);
   }, CONFIRM_DELAY);
 
-  pendingConfirms.set(alert.id, timer);
+  pendingConfirms.set(alert.id, { timer, actionLabel: action.label });
+
+  logDecision({
+    decisionId: `autonomy-confirm-${alert.id}`,
+    type: "autonomy",
+    description: `Scheduled (confirm tier): ${action.label}`,
+    evidence: { signals: [alert.category, alert.title] },
+    confidence: 0.6,
+  });
+
   return true;
 }
 

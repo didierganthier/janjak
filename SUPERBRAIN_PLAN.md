@@ -4,6 +4,8 @@
 
 This document is an implementation plan, not a roadmap of ideas. Every section maps to specific files, schemas, and commands.
 
+> **✅ Implementation status (June 2026): COMPLETE.** All five layers plus the §10 privacy + safety controls are built, validated, and shipped. Per-layer status is marked below.
+
 ---
 
 ## 1. Guiding principles
@@ -43,7 +45,7 @@ Each layer reads from layers below. Layer 1 is the foundation — without it, no
 
 ---
 
-## 3. Layer 1 — Semantic Memory (the foundation)
+## 3. Layer 1 — Semantic Memory (the foundation) ✅
 
 **Purpose:** every piece of text Janjak sees becomes searchable by meaning, not just keyword.
 
@@ -112,7 +114,7 @@ Every call to `askJanjak`, `getAIDailyPlan`, `generateMorningBriefing`, `voice` 
 
 ---
 
-## 4. Layer 2 — Entity Graph
+## 4. Layer 2 — Entity Graph ✅
 
 **Purpose:** Janjak stops treating each email/task/PR as isolated and starts understanding *who* and *what* connects them.
 
@@ -193,7 +195,7 @@ For an email "John from Acme asked about the Janjak voice feature":
 
 ---
 
-## 5. Layer 3 — Personal Model
+## 5. Layer 3 — Personal Model ✅
 
 **Purpose:** Janjak stops being generic and becomes specifically *yours*. Knows your preferences, your goals, your patterns, your style.
 
@@ -285,7 +287,7 @@ Result: morning briefings, daily plans, and replies are *aligned with what you c
 
 ---
 
-## 6. Layer 4 — Learning Loop
+## 6. Layer 4 — Learning Loop ✅
 
 **Purpose:** every nudge, autonomous action, suggestion, and workflow execution produces feedback that adjusts future behavior.
 
@@ -350,7 +352,7 @@ This is *non-negotiable* for trust. A super brain you can't audit is a black box
 
 ---
 
-## 7. Layer 5 — Synthesis
+## 7. Layer 5 — Synthesis ✅
 
 **Purpose:** memory without consolidation is hoarding. Janjak needs a daily/weekly "sleep cycle" where it reflects, extracts patterns, and updates the personal model.
 
@@ -416,7 +418,7 @@ Each phase is independently shippable — you get value at the end of every one.
 
 ---
 
-## 10. Privacy + safety controls
+## 10. Privacy + safety controls ✅
 
 Non-negotiable from day one:
 

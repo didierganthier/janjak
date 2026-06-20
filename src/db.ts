@@ -97,6 +97,118 @@ export function getDb(): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_memory_timestamp ON memory(timestamp);
     CREATE INDEX IF NOT EXISTS idx_memory_type ON memory(type);
+
+    CREATE TABLE IF NOT EXISTS entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      canonical_key TEXT NOT NULL UNIQUE,
+      aliases TEXT NOT NULL DEFAULT '[]',
+      attributes TEXT NOT NULL DEFAULT '{}',
+      importance REAL NOT NULL DEFAULT 0.5,
+      first_seen INTEGER NOT NULL,
+      last_seen INTEGER NOT NULL,
+      mention_count INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS relationships (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_entity INTEGER NOT NULL,
+      to_entity INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      strength REAL NOT NULL DEFAULT 0.5,
+      evidence_count INTEGER NOT NULL DEFAULT 1,
+      last_evidence INTEGER NOT NULL,
+      FOREIGN KEY (from_entity) REFERENCES entities(id),
+      FOREIGN KEY (to_entity) REFERENCES entities(id),
+      UNIQUE(from_entity, to_entity, type)
+    );
+
+    CREATE TABLE IF NOT EXISTS entity_mentions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_id INTEGER NOT NULL,
+      memory_id INTEGER NOT NULL,
+      mention_text TEXT NOT NULL DEFAULT '',
+      first_seen INTEGER NOT NULL,
+      FOREIGN KEY (entity_id) REFERENCES entities(id),
+      FOREIGN KEY (memory_id) REFERENCES memory(id),
+      UNIQUE(entity_id, memory_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS graph_memory_state (
+      memory_id INTEGER PRIMARY KEY,
+      extracted_at INTEGER NOT NULL,
+      entity_count INTEGER NOT NULL DEFAULT 0,
+      relationship_count INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (memory_id) REFERENCES memory(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type);
+    CREATE INDEX IF NOT EXISTS idx_entities_canonical ON entities(canonical_key);
+    CREATE INDEX IF NOT EXISTS idx_rel_from ON relationships(from_entity);
+    CREATE INDEX IF NOT EXISTS idx_rel_to ON relationships(to_entity);
+    CREATE INDEX IF NOT EXISTS idx_mentions_entity ON entity_mentions(entity_id);
+    CREATE INDEX IF NOT EXISTS idx_mentions_memory ON entity_mentions(memory_id);
+
+    CREATE TABLE IF NOT EXISTS preferences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'inferred',
+      confidence REAL NOT NULL DEFAULT 0.5,
+      evidence_count INTEGER NOT NULL DEFAULT 1,
+      last_confirmed INTEGER NOT NULL,
+      UNIQUE(category, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      description TEXT NOT NULL,
+      priority INTEGER NOT NULL DEFAULT 5,
+      active INTEGER NOT NULL DEFAULT 1,
+      target_date TEXT,
+      created_at INTEGER NOT NULL,
+      context TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS routines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      pattern TEXT NOT NULL DEFAULT '{}',
+      confidence REAL NOT NULL DEFAULT 0.5,
+      observed_count INTEGER NOT NULL DEFAULT 1,
+      last_observed INTEGER NOT NULL,
+      UNIQUE(name)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_preferences_category ON preferences(category);
+    CREATE INDEX IF NOT EXISTS idx_goals_active ON goals(active);
+    CREATE INDEX IF NOT EXISTS idx_routines_confidence ON routines(confidence);
+
+    CREATE TABLE IF NOT EXISTS feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action_type TEXT NOT NULL,
+      action_id TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      context TEXT NOT NULL DEFAULT '{}',
+      timestamp INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS decision_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      decision_id TEXT NOT NULL UNIQUE,
+      type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      evidence TEXT NOT NULL DEFAULT '{}',
+      confidence REAL NOT NULL DEFAULT 0.5,
+      timestamp INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_feedback_action ON feedback(action_type, action_id);
+    CREATE INDEX IF NOT EXISTS idx_feedback_timestamp ON feedback(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_decision_timestamp ON decision_log(timestamp);
   `);
 
   return db;
@@ -189,6 +301,15 @@ export function resetTrackedData(): void {
     "project_sessions",
     "browser_usage",
     "memory",
+    "entities",
+    "relationships",
+    "entity_mentions",
+    "graph_memory_state",
+    "preferences",
+    "goals",
+    "routines",
+    "feedback",
+    "decision_log",
   ];
 
   for (const table of tables) {

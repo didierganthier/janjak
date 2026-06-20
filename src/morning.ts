@@ -8,7 +8,9 @@ import { getTodayScore, getWeeklyScores } from "./score.js";
 import { getCurrentStreak } from "./streak.js";
 import { getBehavioralProfile } from "./memory.js";
 import { recall, formatHitsForPrompt } from "./memory/recall.js";
-import { getTodayEvents, getFreeSlots, type CalendarEvent } from "./calendar.js";
+import { formatEntityContextForPrompt } from "./graph/query.js";
+import { formatPersonalContextForPrompt } from "./personal/synthesis.js";
+import { getTodayEvents, getFreeSlots, getMeetingPrepContext, type CalendarEvent } from "./calendar.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import { fetchRecentEmails } from "./gmail-client.js";
 import type { ExtractedTask } from "./types.js";
@@ -175,7 +177,7 @@ async function getFreeTimeSection(): Promise<string> {
 
 // ─── AI Briefing ────────────────────────────────────────────────
 
-async function getAISuggestion(sections: Record<string, string>): Promise<string> {
+async function getAISuggestion(sections: Record<string, string>, upcomingMeeting?: CalendarEvent): Promise<string> {
   const apiKey = process.env["OPENAI_API_KEY"];
   if (!apiKey) return "";
 
@@ -188,11 +190,37 @@ async function getAISuggestion(sections: Record<string, string>): Promise<string
       const { recall, formatHitsForPrompt } = await import("./memory/recall.js");
       const hits = await recall(
         `morning briefing context: ${sections.calendar} ${sections.tasks}`,
-        { limit: 5, minSimilarity: 0.2 }
+        { limit: 5, minSimilarity: 0.2, respectTiers: true }
       );
       memoryBlock = formatHitsForPrompt(hits);
     } catch {
       memoryBlock = "";
+    }
+
+    let entityBlock = "";
+    try {
+      entityBlock = formatEntityContextForPrompt(
+        `${sections.calendar}\n${sections.tasks}\n${sections.emails}`,
+        5
+      );
+    } catch {
+      entityBlock = "";
+    }
+
+    let meetingPrepBlock = "";
+    if (upcomingMeeting) {
+      try {
+        meetingPrepBlock = await getMeetingPrepContext(upcomingMeeting, 4);
+      } catch {
+        meetingPrepBlock = "";
+      }
+    }
+
+    let personalBlock = "";
+    try {
+      personalBlock = formatPersonalContextForPrompt();
+    } catch {
+      personalBlock = "";
     }
 
     const context = `
@@ -214,6 +242,9 @@ BEHAVIORAL PATTERNS:
 - Avg daily coding: ${profile.avgCodingMinutes}min
 - Tracked days: ${profile.trackedDays}
 ${memoryBlock ? "\n" + memoryBlock : ""}
+${entityBlock ? "\n" + entityBlock : ""}
+${meetingPrepBlock ? "\n" + meetingPrepBlock : ""}
+${personalBlock ? "\n" + personalBlock : ""}
 `.trim();
 
     const response = await client.chat.completions.create({
@@ -259,6 +290,7 @@ export async function generateMorningBriefing(options: { ai?: boolean } = {}): P
 
   const tasks = getTaskSection();
   const scores = getScoreSection();
+  const calendarEvents = await getTodayEvents();
 
   const sections: string[] = [];
 
@@ -297,7 +329,8 @@ export async function generateMorningBriefing(options: { ai?: boolean } = {}): P
   // AI Plan
   if (ai) {
     const sectionData = { calendar, emails, tasks, scores, freeTime };
-    const aiPlan = await getAISuggestion(sectionData);
+    const upcomingMeeting = calendarEvents.find(e => e.status === "upcoming" || e.status === "now");
+    const aiPlan = await getAISuggestion(sectionData, upcomingMeeting);
     if (aiPlan) {
       sections.push("\n🧠 Janjak's Plan For You");
       sections.push("─".repeat(30));
@@ -340,10 +373,37 @@ export async function getSpokenBriefing(): Promise<string> {
       limit: 4,
       minSimilarity: 0.2,
       daysBack: 30,
+      respectTiers: true,
     });
     memoryBlock = formatHitsForPrompt(hits);
   } catch {
     memoryBlock = "";
+  }
+
+  let entityBlock = "";
+  try {
+    entityBlock = formatEntityContextForPrompt(
+      `${calendarData.map((e) => e.title).join(" ")} ${tasks.map((t) => t.title).join(" ")}`,
+      4
+    );
+  } catch {
+    entityBlock = "";
+  }
+
+  let meetingPrepBlock = "";
+  if (calendarData.length > 0) {
+    try {
+      meetingPrepBlock = await getMeetingPrepContext(calendarData[0], 3);
+    } catch {
+      meetingPrepBlock = "";
+    }
+  }
+
+  let personalBlock = "";
+  try {
+    personalBlock = formatPersonalContextForPrompt();
+  } catch {
+    personalBlock = "";
   }
 
   const context = `
@@ -356,6 +416,9 @@ In-progress tasks: ${tasks.filter(t => t.status === "in-progress").length}
 Yesterday's score: ${yesterday ? `${yesterday.score}/100` : "no data"}
 Streak: ${streak.days} days
 ${memoryBlock ? `\n${memoryBlock}\n` : ""}
+${entityBlock ? `\n${entityBlock}\n` : ""}
+${meetingPrepBlock ? `\n${meetingPrepBlock}\n` : ""}
+${personalBlock ? `\n${personalBlock}\n` : ""}
 `.trim();
 
   try {

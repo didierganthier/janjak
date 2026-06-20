@@ -11,6 +11,8 @@ import { isAuthenticated } from "./gmail-auth.js";
 import { fetchRecentEmails } from "./gmail-client.js";
 import { looksLikeTaskCreation, createTaskFromText, formatCreatedTask } from "./nl-tasks.js";
 import { recall, capture, formatHitsForPrompt } from "./memory/recall.js";
+import { formatEntityContextForPrompt } from "./graph/query.js";
+import { formatPersonalContextForPrompt } from "./personal/synthesis.js";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -187,10 +189,24 @@ export async function askJanjak(question: string, history: ChatMessage[] = []): 
   // Semantic recall: pull relevant past memories before generating.
   let memoryBlock = "";
   try {
-    const hits = await recall(question, { limit: 6, minSimilarity: 0.2 });
+    const hits = await recall(question, { limit: 6, minSimilarity: 0.2, respectTiers: true });
     memoryBlock = formatHitsForPrompt(hits);
   } catch {
     memoryBlock = "";
+  }
+
+  let entityBlock = "";
+  try {
+    entityBlock = formatEntityContextForPrompt(question, 5);
+  } catch {
+    entityBlock = "";
+  }
+
+  let personalBlock = "";
+  try {
+    personalBlock = formatPersonalContextForPrompt();
+  } catch {
+    personalBlock = "";
   }
 
   const systemPrompt = `You are ${characterName}, a personal AI assistant that knows everything about the user's digital work habits. You have access to their complete activity history, focus scores, behavioral patterns, and tasks.
@@ -211,7 +227,7 @@ Use 1-2 emoji naturally. Don't be overly enthusiastic — be like a smart, calm 
 Maintain conversation context — if the user refers to something from a previous message ("this", "that", "it"), use the conversation history to understand what they mean.
 Respond in the same language the user speaks to you.
 
-${memoryBlock ? memoryBlock + "\n\n" : ""}USER DATA:
+${memoryBlock ? memoryBlock + "\n\n" : ""}${entityBlock ? entityBlock + "\n\n" : ""}${personalBlock ? personalBlock + "\n\n" : ""}USER DATA:
 ${context}`;
 
   // Build messages with conversation history for context

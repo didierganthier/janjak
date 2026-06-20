@@ -6,6 +6,8 @@
 import OpenAI from "openai";
 import { execSync } from "node:child_process";
 import { getTasks } from "./db.js";
+import { formatEntityContextForPrompt } from "./graph/query.js";
+import { formatPersonalContextForPrompt } from "./personal/synthesis.js";
 import type { ExtractedTask } from "./types.js";
 
 function getOpenAIClient(): OpenAI {
@@ -51,6 +53,23 @@ export async function generateReply(task: ExtractedTask, tone: "professional" | 
     brief: "Be extremely concise — 2-3 sentences max. Get straight to the point.",
   };
 
+  let entityBlock = "";
+  try {
+    entityBlock = formatEntityContextForPrompt(
+      `${task.person}\n${task.sourceSubject}\n${task.title}\n${task.description}`,
+      4
+    );
+  } catch {
+    entityBlock = "";
+  }
+
+  let personalBlock = "";
+  try {
+    personalBlock = formatPersonalContextForPrompt();
+  } catch {
+    personalBlock = "";
+  }
+
   const prompt = `Draft an email reply for the following task/request.
 
 CONTEXT:
@@ -73,6 +92,8 @@ INSTRUCTIONS:
 - Keep it natural — not robotic or templated
 - Do NOT include subject line, greetings like "Dear" or sign-offs like "Best regards" with a name — just the body
 - The user will add their own greeting and signature
+${entityBlock ? `\n\n${entityBlock}` : ""}
+${personalBlock ? `\n\n${personalBlock}` : ""}
 
 Reply body:`;
 

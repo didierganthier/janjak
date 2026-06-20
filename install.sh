@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─── Janjak One-Click Installer ─────────────────────────────────────
-# Usage: curl -fsSL https://raw.githubusercontent.com/yourusername/janjak/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/didierganthier/janjak/main/install.sh | bash
 # Or locally: bash install.sh
 #
 # What it does:
@@ -26,6 +26,7 @@ RESET='\033[0m'
 
 INSTALL_DIR="$HOME/.janjak-app"
 DATA_DIR="$HOME/.janjak"
+REPO_URL="https://github.com/didierganthier/janjak.git"
 
 echo ""
 echo -e "${CYAN}${BOLD}🧠 Janjak Installer${RESET}"
@@ -73,9 +74,14 @@ else
         echo -e "  ${DIM}Using current directory...${RESET}"
         INSTALL_DIR="$(pwd)"
     else
-        echo -e "  ${RED}✗${RESET} Cannot find Janjak project."
-        echo -e "  Run this script from the janjak project folder."
-        exit 1
+        # Fresh remote install (curl | bash): clone the repo.
+        if ! command -v git &> /dev/null; then
+            echo -e "  ${RED}✗${RESET} git is required to download Janjak."
+            echo -e "  Install git (e.g. ${CYAN}xcode-select --install${RESET}) and re-run."
+            exit 1
+        fi
+        echo -e "  ${DIM}Downloading Janjak from GitHub...${RESET}"
+        git clone --quiet "$REPO_URL" "$INSTALL_DIR"
     fi
 fi
 cd "$INSTALL_DIR"

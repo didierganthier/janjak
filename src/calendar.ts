@@ -15,6 +15,7 @@ export interface CalendarEvent {
   status: "upcoming" | "now" | "passed";
   minutesUntil: number;
   organizer: string;
+  attendees: string[];
   meetLink: string | null;
 }
 
@@ -77,6 +78,10 @@ export async function getTodayEvents(): Promise<CalendarEvent[]> {
           if (video?.uri) meetLink = video.uri;
         }
 
+        const attendees = (e.attendees ?? [])
+          .map((a) => a.displayName || a.email || "")
+          .filter((name) => name.length > 0);
+
         return {
           id: e.id ?? "",
           title: e.summary ?? "(No title)",
@@ -87,6 +92,7 @@ export async function getTodayEvents(): Promise<CalendarEvent[]> {
           status,
           minutesUntil,
           organizer: e.organizer?.displayName ?? e.organizer?.email ?? "",
+          attendees,
           meetLink,
         };
       });
@@ -161,6 +167,19 @@ function formatEventLine(e: CalendarEvent): string {
   else if (e.status === "upcoming" && e.minutesUntil <= 60) detail = ` (in ${e.minutesUntil}m)`;
 
   return `  ${statusIcon} ${time}  ${e.title}${meetBadge}${detail}`;
+}
+
+export async function getMeetingPrepContext(event: CalendarEvent, limit = 3): Promise<string> {
+  const attendees = [event.organizer, ...event.attendees].filter((name) => name && name.length > 0);
+  if (attendees.length === 0) return "";
+
+  try {
+    const { formatEntityContextForPrompt } = await import("./graph/query.js");
+    const query = `${event.title} ${attendees.join(" ")}`;
+    return formatEntityContextForPrompt(query, limit);
+  } catch {
+    return "";
+  }
 }
 
 export async function formatCalendarReport(): Promise<string> {

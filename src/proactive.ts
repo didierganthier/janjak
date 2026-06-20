@@ -10,6 +10,8 @@
 //   5. Tasks — deadline approaching, overdue tasks
 //   6. Energy — break reminders, hydration, posture
 //   7. Streaks — streak at risk, streak milestone
+//   8. Goals — deadline pressure, daily focus on the #1 goal (Super Brain L3)
+//   9. Relationships — reconnect nudges for key people gone quiet (Super Brain L2)
 
 import { getStatus, getNudge, suggestNextTask } from "./engine.js";
 import { getUpcomingEvents, getMeetingAlert, type CalendarEvent } from "./calendar.js";
@@ -19,6 +21,14 @@ import { getCurrentStreak } from "./streak.js";
 import { getTasks, getTodayStats } from "./db.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import { triggerMeetingWorkflows } from "./workflows.js";
+import { getState, setState } from "./db.js";
+import { logDecision } from "./learning/explain.js";
+import { isAlertMuted } from "./learning/adapt.js";
+import { setWorkflowEnabled } from "./workflows.js";
+import { getActionBaseTier } from "./autonomy.js";
+import { runDailyConsolidation } from "./synthesis/daily.js";
+import { listGoals } from "./personal/goals.js";
+import { listEntities } from "./graph/entities.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -31,7 +41,9 @@ export type AlertCategory =
   | "task"
   | "energy"
   | "streak"
-  | "milestone";
+  | "milestone"
+  | "goal"
+  | "relationship";
 
 export interface ProactiveAlert {
   id: string;
@@ -57,6 +69,8 @@ const COOLDOWNS: Record<AlertCategory, number> = {
   energy: 20 * 60_000,    // 20 min between energy alerts
   streak: 4 * 60 * 60_000, // 4 hours between streak alerts
   milestone: 60 * 60_000, // 1 hour between milestone celebrations
+  goal: 4 * 60 * 60_000,  // 4 hours between goal nudges
+  relationship: 6 * 60 * 60_000, // 6 hours between relationship nudges
 };
 
 function canFire(id: string, category: AlertCategory): boolean {
@@ -479,6 +493,101 @@ function checkStreak(): ProactiveAlert[] {
   return alerts;
 }
 
+/** Goal-pressure nudges: deadlines approaching, daily focus on the top goal. */
+function checkGoals(): ProactiveAlert[] {
+  const alerts: ProactiveAlert[] = [];
+
+  try {
+    const goals = listGoals({ activeOnly: true });
+    if (goals.length === 0) return alerts;
+
+    const hour = new Date().getHours();
+    const today = new Date().toISOString().slice(0, 10);
+    const todayMs = Date.parse(`${today}T00:00:00`);
+
+    // Deadline pressure: active goals with a target date in the next 7 days.
+    const upcoming = goals
+      .filter((g) => g.targetDate)
+      .map((g) => ({ goal: g, daysLeft: Math.round((Date.parse(`${g.targetDate}T00:00:00`) - todayMs) / 86_400_000) }))
+      .filter((x) => Number.isFinite(x.daysLeft) && x.daysLeft >= 0 && x.daysLeft <= 7)
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+
+    const mostUrgent = upcoming[0];
+    if (mostUrgent) {
+      const { goal, daysLeft } = mostUrgent;
+      const id = `goal-deadline-${goal.id}-${today}`;
+      if (canFire(id, "goal")) {
+        const when = daysLeft === 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
+        alerts.push({
+          id,
+          category: "goal",
+          priority: daysLeft <= 2 ? "high" : "medium",
+          title: `🎯 Goal due ${when}`,
+          message: `"${goal.description}" — what's the next concrete step you can take right now?`,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // Morning focus on the single most important goal (priority-weighted).
+    if (hour >= 8 && hour <= 10) {
+      const top = [...goals].sort((a, b) => b.priority - a.priority)[0];
+      if (top && top.priority >= 7) {
+        const id = `goal-focus-${today}`;
+        if (canFire(id, "goal")) {
+          alerts.push({
+            id,
+            category: "goal",
+            priority: "low",
+            title: "🎯 Your #1 goal today",
+            message: `"${top.description}" — how will today move this forward?`,
+            timestamp: Date.now(),
+          });
+        }
+      }
+    }
+  } catch { /* goals not available */ }
+
+  return alerts;
+}
+
+/** Relationship upkeep: nudge when a key person hasn't come up in a while. */
+function checkRelationships(): ProactiveAlert[] {
+  const alerts: ProactiveAlert[] = [];
+
+  try {
+    const hour = new Date().getHours();
+    if (hour < 9 || hour > 19) return alerts; // only nudge during waking hours
+
+    const today = new Date().toISOString().slice(0, 10);
+    const STALE_DAYS = 14;
+    const now = Date.now();
+
+    const stale = listEntities(50, "person")
+      .filter((e) => e.importance >= 0.5 && e.mentionCount >= 3)
+      .map((e) => ({ entity: e, daysSince: Math.floor((now - e.lastSeen) / 86_400_000) }))
+      .filter((x) => x.daysSince >= STALE_DAYS)
+      .sort((a, b) => b.entity.importance - a.entity.importance);
+
+    const top = stale[0];
+    if (top) {
+      const id = `relationship-stale-${top.entity.id}-${today}`;
+      if (canFire(id, "relationship")) {
+        alerts.push({
+          id,
+          category: "relationship",
+          priority: "low",
+          title: `🤝 Reconnect with ${top.entity.name}`,
+          message: `You haven't mentioned ${top.entity.name} in ${top.daysSince} days. Worth a quick check-in?`,
+          timestamp: Date.now(),
+        });
+      }
+    }
+  } catch { /* entity graph not available */ }
+
+  return alerts;
+}
+
 // ─── Main Engine ────────────────────────────────────────────────
 
 /** Run all checks and return prioritized alerts (highest first). */
@@ -492,6 +601,8 @@ export async function getProactiveAlerts(): Promise<ProactiveAlert[]> {
   allAlerts.push(...checkTasks());
   allAlerts.push(...checkEnergy());
   allAlerts.push(...checkStreak());
+  allAlerts.push(...checkGoals());
+  allAlerts.push(...checkRelationships());
 
   // Run async checks
   const calendarAlerts = await checkCalendar();
@@ -507,12 +618,26 @@ export async function getProactiveAlerts(): Promise<ProactiveAlert[]> {
 
   allAlerts.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
 
-  // Mark all as fired
-  for (const alert of allAlerts) {
+  // Drop alerts whose category has been muted by the learning loop.
+  const visible = allAlerts.filter((alert) => !isAlertMuted(alert.category));
+
+  // Mark all as fired + log a traceable decision for each (powers `janjak why`).
+  for (const alert of visible) {
     markFired(alert.id);
+    logDecision({
+      decisionId: `alert-${alert.id}-${alert.timestamp}`,
+      type: "alert",
+      description: `${alert.title} — ${alert.message}`.slice(0, 160),
+      evidence: {
+        signals: [`category:${alert.category}`, `priority:${alert.priority}`],
+        ...(alert.actionLabel ? { suggestedAction: alert.actionLabel } : {}),
+      },
+      confidence: alert.priority === "critical" ? 0.95 : alert.priority === "high" ? 0.8 : 0.6,
+      timestamp: alert.timestamp,
+    });
   }
 
-  return allAlerts;
+  return visible;
 }
 
 /** Get just the top alert (for nudge integration). */
@@ -552,6 +677,34 @@ type AlertCallback = (alert: ProactiveAlert) => void;
 
 let proactiveInterval: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Run the nightly consolidation at most once per local day, after the
+ * consolidation hour (≈3am) so it captures the full previous day before
+ * summarizing. Tick-driven, so the first tick past 3am each day fires it.
+ */
+const CONSOLIDATION_HOUR = 3;
+
+async function maybeRunDailyConsolidation(): Promise<void> {
+  try {
+    const now = new Date();
+    if (now.getHours() < CONSOLIDATION_HOUR) return; // wait until past ~3am
+    const today = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
+    if (getState("daily_consolidation_date") === today) return;
+    // Consolidate the day that just ended: a moment just before midnight today.
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    const yesterdayRef = startOfToday.getTime() - 1;
+    await runDailyConsolidation({
+      now: yesterdayRef,
+      onDisableWorkflow: (workflowId) => setWorkflowEnabled(workflowId, false),
+      currentActionTier: (actionId) => getActionBaseTier(actionId),
+    });
+    setState("daily_consolidation_date", today);
+  } catch {
+    /* consolidation is best-effort; never block the engine */
+  }
+}
+
 export function startProactiveEngine(
   callback: AlertCallback,
   intervalMs = 30_000,
@@ -561,6 +714,7 @@ export function startProactiveEngine(
   // Initial check after 5 seconds (let the system warm up)
   setTimeout(async () => {
     try {
+      await maybeRunDailyConsolidation();
       const alerts = await getProactiveAlerts();
       for (const alert of alerts) callback(alert);
     } catch { /* */ }
@@ -568,6 +722,7 @@ export function startProactiveEngine(
 
   proactiveInterval = setInterval(async () => {
     try {
+      await maybeRunDailyConsolidation();
       const alerts = await getProactiveAlerts();
       for (const alert of alerts) {
         callback(alert);

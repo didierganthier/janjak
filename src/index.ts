@@ -4,10 +4,11 @@
 //  and subtly acts." — Jarvis for builders.
 
 import { config } from "dotenv";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 
 // Load env vars from ~/.janjak/.env
 config({ path: join(homedir(), ".janjak", ".env"), quiet: true });
@@ -35,7 +36,7 @@ import { startWebDashboard } from "./web.js";
 import { launchMenuBar, buildMenuBar } from "./menubar.js";
 import { startSetupWizard } from "./setup.js";
 import { startProactiveEngine, stopProactiveEngine, formatAlert, type ProactiveAlert } from "./proactive.js";
-import { executeAutonomously, isAutonomyEnabled, setAutonomyEnabled, setTierEnabled, formatAutonomyStatus, formatActionLog, cancelPending, getPendingActions, type SafetyTier } from "./autonomy.js";
+import { executeAutonomously, isAutonomyEnabled, setAutonomyEnabled, setTierEnabled, formatAutonomyStatus, formatActionLog, cancelPending, getPendingActions, getActionBaseTier, type SafetyTier } from "./autonomy.js";
 import { draftAndOpen, generateReply, getTaskById, formatReplyPreview } from "./reply.js";
 import { voiceCommand, getVoiceLanguageMode, setVoiceLanguageMode, formatVoiceLanguageMode, type VoiceLanguageMode } from "./voice.js";
 import { generateMorningBriefing } from "./morning.js";
@@ -46,6 +47,51 @@ import { getOpenWindows, formatOpenWindows } from "./windows.js";
 import { capture, recall, formatHits } from "./memory/recall.js";
 import { countMemories, deleteMemory, listMemories, type MemoryType } from "./memory/vector-store.js";
 import { ingestAll, formatIngestReport } from "./memory/ingest.js";
+import {
+  formatEntityList,
+  formatEntityNetwork,
+  formatEntityProfile,
+  formatGraphSync,
+  getEntityNetwork,
+  getEntityProfile,
+  getTopEntities,
+  rebuildGraphStats,
+  syncMemoryToGraph,
+} from "./graph/query.js";
+import type { EntityType } from "./graph/entities.js";
+import { deleteEntityByName } from "./graph/entities.js";
+import { writeExport, formatExportSummary } from "./privacy.js";
+import {
+  formatPersonalModel,
+  synthesizePersonalModel,
+} from "./personal/synthesis.js";
+import {
+  upsertPreference,
+  deletePreference,
+  PREFERENCE_CATEGORIES,
+  type PreferenceCategory,
+} from "./personal/profile.js";
+import {
+  addGoal,
+  listGoals,
+  completeGoal,
+  deleteGoal,
+  GOAL_CATEGORIES,
+  type GoalCategory,
+} from "./personal/goals.js";
+import { formatFeedbackReport } from "./learning/feedback.js";
+import {
+  formatExplanation,
+  getDecisionById,
+  getLastDecision,
+} from "./learning/explain.js";
+import { adaptFromFeedback, formatAdaptations } from "./learning/adapt.js";
+import {
+  runDailyConsolidation,
+  formatDailyConsolidation,
+  formatTodaySummary,
+} from "./synthesis/daily.js";
+import { gatherWeeklyReview, formatWeeklyReview } from "./synthesis/weekly.js";
 
 function confirmPrompt(question: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -53,6 +99,16 @@ function confirmPrompt(question: string): Promise<boolean> {
     rl.question(question, (answer) => {
       rl.close();
       resolve(/^(y|yes)$/i.test(answer.trim()));
+    });
+  });
+}
+
+function textPrompt(question: string): Promise<string> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim());
     });
   });
 }
@@ -328,20 +384,37 @@ const VALID_MEMORY_TYPES: MemoryType[] = [
   "daily_summary",
 ];
 
+const VALID_ENTITY_TYPES: EntityType[] = [
+  "person",
+  "project",
+  "topic",
+  "organization",
+  "place",
+];
+
 program
   .command("note <text...>")
   .description("Capture a manual note into Janjak's semantic memory.")
   .option("--importance <n>", "Importance score 0-1 (default 0.7)", "0.7")
-  .action(async (textParts: string[], opts: { importance: string }) => {
+  .option("--no-embed", "Store locally without sending the text to the embedding API")
+  .action(async (textParts: string[], opts: { importance: string; embed?: boolean }) => {
     const text = textParts.join(" ").trim();
     if (!text) {
       console.error("Note text is empty.");
       process.exit(1);
     }
     const importance = Math.max(0, Math.min(1, parseFloat(opts.importance) || 0.7));
+    const noEmbed = opts.embed === false;
     try {
-      const id = await capture({ type: "note", text, importance, metadata: { source: "cli" } });
-      console.log(`\n  📝 Saved note #${id} (importance ${importance.toFixed(2)})\n`);
+      const id = await capture({
+        type: "note",
+        text,
+        importance,
+        metadata: { source: "cli" },
+        noEmbed,
+      });
+      const tag = noEmbed ? " · 🔒 private (not embedded)" : "";
+      console.log(`\n  📝 Saved note #${id} (importance ${importance.toFixed(2)})${tag}\n`);
     } catch (err) {
       console.error(`\n  Failed to save note: ${(err as Error).message}\n`);
       process.exit(1);
@@ -421,9 +494,27 @@ program
   });
 
 program
-  .command("forget <id>")
-  .description("Delete a single memory row by id.")
-  .action((id: string) => {
+  .command("forget [id]")
+  .description("Delete a memory by id, or an entire entity with --entity \"<name>\".")
+  .option("--entity <name>", "Delete an entity and all of its related memories")
+  .action((id: string | undefined, opts: { entity?: string }) => {
+    if (opts.entity) {
+      const result = deleteEntityByName(opts.entity);
+      if (!result) {
+        console.log(`\n  No entity found matching "${opts.entity}"\n`);
+        return;
+      }
+      console.log(
+        `\n  🗑️  Removed entity "${result.entityName}" — ` +
+          `${result.memoriesDeleted} memories, ${result.mentionsDeleted} mentions, ` +
+          `${result.relationshipsDeleted} relationships deleted.\n`
+      );
+      return;
+    }
+    if (!id) {
+      console.error("Provide a memory id, or use --entity \"<name>\".");
+      process.exit(1);
+    }
     const n = parseInt(id, 10);
     if (Number.isNaN(n)) {
       console.error("Invalid id.");
@@ -431,6 +522,20 @@ program
     }
     const ok = deleteMemory(n);
     console.log(ok ? `\n  Deleted memory #${n}\n` : `\n  No memory found with id #${n}\n`);
+  });
+
+program
+  .command("export")
+  .description("Export all local memory, entities, preferences, goals & routines as JSON.")
+  .option("--out <file>", "Write to a specific path (default ~/.janjak/janjak-export-<date>.json)")
+  .action((opts: { out?: string }) => {
+    try {
+      const { path, data } = writeExport(opts.out);
+      console.log(formatExportSummary(path, data));
+    } catch (err) {
+      console.error(`\n  Export failed: ${(err as Error).message}\n`);
+      process.exit(1);
+    }
   });
 
 program
@@ -455,6 +560,326 @@ program
       console.error(`\n  Ingest failed: ${(err as Error).message}\n`);
       process.exit(1);
     }
+  });
+
+program
+  .command("entities")
+  .description("List the strongest entities in Janjak's knowledge graph.")
+  .option("-n, --limit <n>", "Number of entities to show", "20")
+  .option("-t, --type <type>", "Filter by entity type")
+  .option("--sync", "Extract entities from memory before listing")
+  .option("--rebuild-stats", "Recompute entity mention stats from stored mentions")
+  .option("--days <n>", "Only sync memories from the last N days")
+  .option("--force", "Reprocess memories even if already extracted")
+  .action(async (opts: { limit: string; type?: string; sync?: boolean; rebuildStats?: boolean; days?: string; force?: boolean }) => {
+    const limit = Math.max(1, parseInt(opts.limit, 10) || 20);
+    const type = opts.type as EntityType | undefined;
+    if (type && !VALID_ENTITY_TYPES.includes(type)) {
+      console.error(`Invalid --type. Use one of: ${VALID_ENTITY_TYPES.join(", ")}`);
+      process.exit(1);
+    }
+
+    if (opts.sync) {
+      try {
+        const days = opts.days ? parseInt(opts.days, 10) : undefined;
+        const progress = await syncMemoryToGraph({ limit: Math.max(limit * 3, 50), daysBack: days, force: opts.force });
+        console.log(formatGraphSync(progress));
+      } catch (err) {
+        console.error(`\n  Entity sync failed: ${(err as Error).message}\n`);
+        process.exit(1);
+      }
+    }
+
+    if (opts.rebuildStats) {
+      try {
+        rebuildGraphStats();
+        console.log("\n🛠️ Rebuilt entity stats from stored mentions.\n");
+      } catch (err) {
+        console.error(`\n  Stats rebuild failed: ${(err as Error).message}\n`);
+        process.exit(1);
+      }
+    }
+
+    console.log(formatEntityList(getTopEntities(limit, type)));
+  });
+
+program
+  .command("who <name...>")
+  .description("Show Janjak's profile for a person, project, topic, org, or place.")
+  .option("--sync", "Extract entities from recent memory before querying")
+  .action(async (nameParts: string[], opts: { sync?: boolean }) => {
+    const name = nameParts.join(" ").trim();
+    if (!name) {
+      console.error("Name is empty.");
+      process.exit(1);
+    }
+    if (opts.sync) {
+      try {
+        const progress = await syncMemoryToGraph({ limit: 50 });
+        console.log(formatGraphSync(progress));
+      } catch (err) {
+        console.error(`\n  Entity sync failed: ${(err as Error).message}\n`);
+        process.exit(1);
+      }
+    }
+    console.log(formatEntityProfile(getEntityProfile(name)));
+  });
+
+program
+  .command("network <name...>")
+  .description("Show the local graph around an entity.")
+  .option("--sync", "Extract entities from recent memory before querying")
+  .action(async (nameParts: string[], opts: { sync?: boolean }) => {
+    const name = nameParts.join(" ").trim();
+    if (!name) {
+      console.error("Name is empty.");
+      process.exit(1);
+    }
+    if (opts.sync) {
+      try {
+        const progress = await syncMemoryToGraph({ limit: 50 });
+        console.log(formatGraphSync(progress));
+      } catch (err) {
+        console.error(`\n  Entity sync failed: ${(err as Error).message}\n`);
+        process.exit(1);
+      }
+    }
+    console.log(formatEntityNetwork(getEntityNetwork(name)));
+  });
+
+// ── personal model (Layer 3) ───────────────────────────────────────
+program
+  .command("knows")
+  .description("Show what Janjak has learned about you — goals, preferences, routines.")
+  .option("-c, --category <category>", "Filter preferences by category")
+  .option("--refresh", "Re-synthesize the personal model from recent behavior first")
+  .action((opts: { category?: string; refresh?: boolean }) => {
+    const category = opts.category as PreferenceCategory | undefined;
+    if (category && !PREFERENCE_CATEGORIES.includes(category)) {
+      console.error(`Invalid --category. Use one of: ${PREFERENCE_CATEGORIES.join(", ")}`);
+      process.exit(1);
+    }
+    if (opts.refresh) {
+      const result = synthesizePersonalModel();
+      console.log(
+        `\n🛠️ Synthesized model — ${result.preferencesUpdated} prefs, ${result.routinesUpdated} routines updated, ${result.preferencesDecayed} decayed.`
+      );
+    }
+    console.log(formatPersonalModel({ category }));
+  });
+
+const goal = program.command("goal").description("Manage your goals.");
+
+goal
+  .command("add <description...>")
+  .description("Add a goal that Janjak aligns its help with.")
+  .option("-c, --category <category>", "Goal category", "project")
+  .option("-p, --priority <n>", "Priority 1-10", "5")
+  .option("-d, --due <date>", "Target date (YYYY-MM-DD)")
+  .action((descParts: string[], opts: { category: string; priority: string; due?: string }) => {
+    const description = descParts.join(" ").trim();
+    if (!description) {
+      console.error("Goal description is empty.");
+      process.exit(1);
+    }
+    const category = opts.category as GoalCategory;
+    if (!GOAL_CATEGORIES.includes(category)) {
+      console.error(`Invalid --category. Use one of: ${GOAL_CATEGORIES.join(", ")}`);
+      process.exit(1);
+    }
+    const priority = parseInt(opts.priority, 10) || 5;
+    const created = addGoal({ category, description, priority, targetDate: opts.due ?? null });
+    console.log(`\n✅ Goal #${created.id} added: ${created.description} (${created.category}, p${created.priority})\n`);
+  });
+
+goal
+  .command("list")
+  .description("List your goals.")
+  .option("--all", "Include completed goals")
+  .action((opts: { all?: boolean }) => {
+    const goals = listGoals({ activeOnly: !opts.all });
+    if (goals.length === 0) {
+      console.log("\n  No goals yet. Add one with `janjak goal add \"...\"`.\n");
+      return;
+    }
+    console.log(`\n🎯 Goals (${goals.length})\n`);
+    for (const g of goals) {
+      const due = g.targetDate ? ` — target ${g.targetDate}` : "";
+      const state = g.active ? "" : " ✓ done";
+      console.log(`  [#${g.id}] (${g.category}) ${g.description}  p${g.priority}${due}${state}`);
+    }
+    console.log();
+  });
+
+goal
+  .command("done <id>")
+  .description("Mark a goal complete.")
+  .action((id: string) => {
+    const ok = completeGoal(parseInt(id, 10));
+    console.log(ok ? `\n✅ Goal #${id} marked complete.\n` : `\n  Goal #${id} not found.\n`);
+  });
+
+goal
+  .command("remove <id>")
+  .description("Delete a goal.")
+  .action((id: string) => {
+    const ok = deleteGoal(parseInt(id, 10));
+    console.log(ok ? `\n🗑️ Goal #${id} deleted.\n` : `\n  Goal #${id} not found.\n`);
+  });
+
+program
+  .command("prefer <category> <key> <value...>")
+  .description("Manually state a preference (e.g. `janjak prefer communication email_tone warm`).")
+  .action((category: string, key: string, valueParts: string[]) => {
+    if (!PREFERENCE_CATEGORIES.includes(category as PreferenceCategory)) {
+      console.error(`Invalid category. Use one of: ${PREFERENCE_CATEGORIES.join(", ")}`);
+      process.exit(1);
+    }
+    const value = valueParts.join(" ").trim();
+    if (!value) {
+      console.error("Preference value is empty.");
+      process.exit(1);
+    }
+    const pref = upsertPreference({
+      category: category as PreferenceCategory,
+      key,
+      value,
+      source: "stated",
+    });
+    console.log(`\n✅ Preference set: ${pref.category}.${pref.key} = ${pref.value} (conf ${pref.confidence.toFixed(2)})\n`);
+  });
+
+program
+  .command("forget-pref <id>")
+  .description("Delete a learned preference by id (see `janjak knows`).")
+  .action((id: string) => {
+    const ok = deletePreference(parseInt(id, 10));
+    console.log(ok ? `\n🗑️ Preference #${id} deleted.\n` : `\n  Preference #${id} not found.\n`);
+  });
+
+// ── learning loop (Layer 4) ─────────────────────────────────────────
+program
+  .command("why [id]")
+  .description("Explain a decision Janjak made. Use `why last` for the most recent.")
+  .action((id?: string) => {
+    if (!id || id === "last") {
+      console.log(formatExplanation(getLastDecision()));
+      return;
+    }
+    console.log(formatExplanation(getDecisionById(id)));
+  });
+
+program
+  .command("feedback")
+  .description("Show acceptance/rejection rates for Janjak's actions.")
+  .option("--days <n>", "Only count feedback from the last N days")
+  .action((opts: { days?: string }) => {
+    const sinceDays = opts.days ? parseInt(opts.days, 10) : undefined;
+    console.log(formatFeedbackReport(sinceDays ? { sinceDays } : {}));
+  });
+
+program
+  .command("adapt")
+  .description("Run an adaptation pass — adjust behavior based on captured feedback.")
+  .action(() => {
+    const applied = adaptFromFeedback({
+      onDisableWorkflow: (workflowId) => {
+        setWorkflowEnabled(workflowId, false);
+      },
+      currentActionTier: (actionId) => getActionBaseTier(actionId),
+    });
+    console.log(formatAdaptations(applied));
+  });
+
+// ── synthesis (Layer 5) ─────────────────────────────────────────────
+program
+  .command("consolidate")
+  .description("Force a consolidation pass — summarize today, refresh the model, run the forgetting curve.")
+  .option("--no-summary", "Skip the AI day-summary step")
+  .action(async (opts: { summary?: boolean }) => {
+    const result = await runDailyConsolidation({
+      skipSummary: opts.summary === false,
+      onDisableWorkflow: (workflowId) => setWorkflowEnabled(workflowId, false),
+      currentActionTier: (actionId) => getActionBaseTier(actionId),
+    });
+    console.log(formatDailyConsolidation(result));
+  });
+
+program
+  .command("summary [period]")
+  .description("Show a synthesized summary. Period: today (default) or week.")
+  .action(async (period?: string) => {
+    if (period === "week") {
+      console.log(formatWeeklyReview(gatherWeeklyReview()));
+      return;
+    }
+    console.log(await formatTodaySummary());
+  });
+
+program
+  .command("review")
+  .description("Interactive weekly review — confirm goals and preferences to lock them in.")
+  .action(async () => {
+    const review = gatherWeeklyReview();
+    console.log(formatWeeklyReview(review));
+
+    if (
+      review.goals.length === 0 &&
+      review.reviewablePreferences.length === 0
+    ) {
+      console.log("  Nothing to confirm yet — keep using Janjak and check back next week.\n");
+      return;
+    }
+
+    console.log("  Let's confirm a few things (press Enter to skip).\n");
+
+    // Confirm goals — answering "no" archives the goal.
+    for (const goal of review.goals) {
+      const keep = await confirmPrompt(
+        `  🎯 Still a goal? "${goal.description}" (y/n) `
+      );
+      if (!keep) {
+        completeGoal(goal.id);
+        console.log("     → archived.\n");
+      }
+    }
+
+    // Confirm inferred/observed preferences — "yes" promotes to a stated fact.
+    for (const pref of review.reviewablePreferences) {
+      const right = await confirmPrompt(
+        `  🧩 Still accurate? [${pref.category}] ${pref.key} = ${pref.value} (y/n) `
+      );
+      if (right) {
+        upsertPreference({
+          category: pref.category,
+          key: pref.key,
+          value: pref.value,
+          source: "stated",
+        });
+        console.log("     → confirmed (stated).\n");
+      } else {
+        deletePreference(pref.id);
+        console.log("     → removed.\n");
+      }
+    }
+
+    // Open-ended capture.
+    const missed = await textPrompt("  💬 Anything important I missed this week? ");
+    if (missed) {
+      try {
+        await capture({
+          type: "note",
+          text: `Weekly review note: ${missed}`,
+          metadata: { source: "weekly_review" },
+          importance: 0.7,
+        });
+        console.log("     → saved to memory.\n");
+      } catch {
+        console.log("     (couldn't save — embeddings unavailable)\n");
+      }
+    }
+
+    console.log("  ✅ Review complete. Your model is up to date.\n");
   });
 
 // ── browser ────────────────────────────────────────────────────────
@@ -1131,6 +1556,28 @@ workflowCmd
   });
 
 // ── daemon ──────────────────────────────────────────────────────────
+/**
+ * Launch the background daemon detached from the current process. Resolves the
+ * entry point relative to this module so it works both from a compiled install
+ * (`dist/daemon-entry.js`, run with node) and from source during development
+ * (`src/daemon-entry.ts`, run with tsx) — no hardcoded paths.
+ */
+async function spawnDaemonDetached(): Promise<void> {
+  const { spawn: spawnProcess } = await import("node:child_process");
+  const moduleUrl = import.meta.url;
+  const isSource = moduleUrl.endsWith(".ts");
+  const moduleDir = dirname(fileURLToPath(moduleUrl));
+  const entry = join(moduleDir, isSource ? "daemon-entry.ts" : "daemon-entry.js");
+  const args = isSource ? ["--import", "tsx", entry] : [entry];
+  const child = spawnProcess(process.execPath, args, {
+    detached: true,
+    stdio: "ignore",
+    cwd: dirname(moduleDir),
+    env: { ...process.env },
+  });
+  child.unref();
+}
+
 const daemonCmd = program
   .command("daemon")
   .description("Run Janjak as an always-on background daemon with HTTP API.");
@@ -1149,22 +1596,7 @@ daemonCmd
       await startDaemon();
     } else {
       // Spawn detached daemon process
-      const { spawn: spawnProcess } = await import("node:child_process");
-      const { fileURLToPath: toPath } = await import("node:url");
-      const child = spawnProcess(
-        process.execPath,
-        [
-          "--import", "tsx",
-          join(homedir(), "Desktop", "janjak", "src", "daemon-entry.ts"),
-        ],
-        {
-          detached: true,
-          stdio: "ignore",
-          cwd: join(homedir(), "Desktop", "janjak"),
-          env: { ...process.env },
-        }
-      );
-      child.unref();
+      await spawnDaemonDetached();
       // Give it a moment to start
       await new Promise(r => setTimeout(r, 1500));
       if (isDaemonRunning()) {
@@ -1215,21 +1647,7 @@ program
   .action(async () => {
     if (!isDaemonRunning()) {
       console.log("⚠️  Starting daemon first...");
-      const { spawn: spawnProcess } = await import("node:child_process");
-      const child = spawnProcess(
-        process.execPath,
-        [
-          "--import", "tsx",
-          join(homedir(), "Desktop", "janjak", "src", "daemon-entry.ts"),
-        ],
-        {
-          detached: true,
-          stdio: "ignore",
-          cwd: join(homedir(), "Desktop", "janjak"),
-          env: { ...process.env },
-        }
-      );
-      child.unref();
+      await spawnDaemonDetached();
       await new Promise(r => setTimeout(r, 1500));
     }
     await buildOverlay();

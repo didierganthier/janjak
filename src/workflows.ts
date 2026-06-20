@@ -19,6 +19,8 @@ import { getStatus } from "./engine.js";
 import { getCurrentProject } from "./project.js";
 import { sendNotification, notificationsAvailable } from "./notify.js";
 import { getState, setState } from "./db.js";
+import { recordFeedback } from "./learning/feedback.js";
+import { logDecision } from "./learning/explain.js";
 import type { ActivityState, FocusMode, UserState } from "./types.js";
 
 // ─── Paths ──────────────────────────────────────────────────────
@@ -426,6 +428,23 @@ async function runWorkflow(workflow: Workflow, snapshot: ContextSnapshot): Promi
   logWorkflowRun(entry);
   lastFired.set(workflow.id, Date.now());
 
+  recordFeedback({
+    actionType: "workflow",
+    actionId: workflow.id,
+    outcome: entry.success ? "accepted" : "rejected",
+    context: { trigger: workflow.trigger.type, exitCode: entry.exitCode },
+  });
+  logDecision({
+    decisionId: `workflow-${workflow.id}-${entry.timestamp}`,
+    type: "workflow",
+    description: `Ran workflow: ${workflow.name}`,
+    evidence: {
+      signals: [`trigger:${workflow.trigger.type}`, `exit:${entry.exitCode ?? "null"}`],
+      command: workflow.command,
+    },
+    confidence: entry.success ? 0.9 : 0.4,
+  });
+
   // Notify user
   if (workflow.notify && notificationsAvailable()) {
     const icon = result.exitCode === 0 ? "⚙️" : "⚠️";
@@ -541,6 +560,12 @@ export async function runWorkflowById(id: string): Promise<WorkflowLogEntry | nu
   };
 
   logWorkflowRun(entry);
+  recordFeedback({
+    actionType: "workflow",
+    actionId: workflow.id,
+    outcome: entry.success ? "accepted" : "rejected",
+    context: { trigger: "manual", exitCode: entry.exitCode },
+  });
   return entry;
 }
 

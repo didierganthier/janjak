@@ -1,6 +1,6 @@
 // ─── Memory: public recall API ─────────────────────────────────
 
-import { embed } from "./embeddings.js";
+import { embed, EMBEDDING_DIMS } from "./embeddings.js";
 import {
   insertMemory,
   searchSimilar,
@@ -16,13 +16,19 @@ export interface CaptureInput {
   metadata?: Record<string, unknown>;
   importance?: number;
   timestamp?: number;
+  /** Store locally without sending text to the embedding API (sensitive items). */
+  noEmbed?: boolean;
 }
 
 /** Embed + store a piece of text. Returns the new memory row id. */
 export async function capture(input: CaptureInput): Promise<number> {
   const trimmed = input.text.trim();
   if (!trimmed) throw new Error("Cannot capture an empty memory.");
-  const embedding = await embed(trimmed);
+  // `noEmbed` keeps sensitive text local: a zero vector never matches a query
+  // (cosine similarity is 0) so the item is stored but never recalled or sent out.
+  const embedding = input.noEmbed
+    ? new Float32Array(EMBEDDING_DIMS)
+    : await embed(trimmed);
   return insertMemory({
     type: input.type,
     text: trimmed,
