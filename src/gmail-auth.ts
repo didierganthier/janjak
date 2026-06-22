@@ -1,5 +1,6 @@
 // ─── Gmail Auth: OAuth2 flow for Gmail API access ──────────────────
-import { google } from "googleapis";
+import { auth as googleAuth } from "@googleapis/gmail";
+import type { OAuth2Client } from "google-auth-library";
 import { createServer } from "node:http";
 import { URL } from "node:url";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -59,9 +60,9 @@ function loadCredentials(): { clientId: string; clientSecret: string; redirectUr
   };
 }
 
-function createOAuth2Client() {
+function createOAuth2Client(): OAuth2Client {
   const { clientId, clientSecret, redirectUri } = loadCredentials();
-  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  return new googleAuth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
 function loadStoredTokens(): StoredTokens | null {

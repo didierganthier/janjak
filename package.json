@@ -19,6 +19,9 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "app": "bash scripts/build-app.sh",
+    "dmg": "bash scripts/build-dmg.sh",
+    "notarize": "bash scripts/notarize.sh",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
@@ -43,23 +46,25 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node-cron": "^3.0.11",
+    "@googleapis/calendar": "^15.0.0",
+    "@googleapis/gmail": "^17.0.0",
     "active-win": "^8.2.1",
     "better-sqlite3": "^12.8.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "dotenv": "^17.3.1",
-    "googleapis": "^171.4.0",
+    "google-auth-library": "^10.7.0",
+    "marked": "^18.0.5",
     "node-cron": "^4.2.1",
     "open": "^11.0.0",
     "openai": "^6.33.0",
-    "ora": "^9.3.0",
-    "sqlite3": "^6.0.1",
-    "typescript": "^6.0.2"
+    "ora": "^9.3.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.0",
-    "tsx": "^4.21.0"
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   }
 }

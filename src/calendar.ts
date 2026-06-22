@@ -2,7 +2,7 @@
 // Fetches today's events, upcoming meetings, and free slots.
 // Uses the same OAuth2 flow as Gmail (calendar.readonly scope).
 
-import { google, calendar_v3 } from "googleapis";
+import { calendar as calendarApi, calendar_v3 } from "@googleapis/calendar";
 import { getAuthenticatedClient, isAuthenticated } from "./gmail-auth.js";
 
 export interface CalendarEvent {
@@ -38,7 +38,7 @@ export async function getTodayEvents(): Promise<CalendarEvent[]> {
 
   try {
     const auth = await getAuthenticatedClient();
-    const calendar = google.calendar({ version: "v3", auth });
+    const calendar = calendarApi({ version: "v3", auth });
 
     const now = new Date();
     const startOfDay = new Date(now);
@@ -261,7 +261,7 @@ export async function createCalendarEvent(event: NewCalendarEvent): Promise<{ id
 
   try {
     const auth = await getAuthenticatedClient();
-    const calendar = google.calendar({ version: "v3", auth });
+    const calendar = calendarApi({ version: "v3", auth });
 
     let requestBody: calendar_v3.Schema$Event;
 

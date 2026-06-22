@@ -4,11 +4,12 @@
 //  and subtly acts." — Jarvis for builders.
 
 import { config } from "dotenv";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve, isAbsolute, extname, basename } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, rmSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
+import open from "open";
 
 // Load env vars from ~/.janjak/.env
 config({ path: join(homedir(), ".janjak", ".env"), quiet: true });
@@ -20,6 +21,7 @@ import { getDayOverview, getAIDailyPlan } from "./planner.js";
 import { getCurrentTrack, pauseMusic, resumeMusic } from "./music.js";
 import { closeDb, setState, getState, resetTrackedData } from "./db.js";
 import { runOAuthFlow, isAuthenticated } from "./gmail-auth.js";
+import { searchEmails, getEmailById } from "./gmail-client.js";
 import { processInbox, formatInboxReport, formatAllTasks, updateTaskStatus } from "./tasks.js";
 import { formatInsights } from "./memory.js";
 import { getTodayScore, getWeeklyScores, formatWeeklyReport, getAIWeeklySummary } from "./score.js";
@@ -45,6 +47,7 @@ import { startDaemon, stopDaemon, isDaemonRunning, getDaemonPid, DAEMON_PORT } f
 import { buildOverlay, launchOverlay } from "./overlay.js";
 import { getOpenWindows, formatOpenWindows } from "./windows.js";
 import { capture, recall, formatHits } from "./memory/recall.js";
+import { generateDocument, inferFormat, slugify, SUPPORTED_FORMATS, readDocument } from "./doc.js";
 import { countMemories, deleteMemory, listMemories, type MemoryType } from "./memory/vector-store.js";
 import { ingestAll, formatIngestReport } from "./memory/ingest.js";
 import {
@@ -417,6 +420,134 @@ program
       console.log(`\n  📝 Saved note #${id} (importance ${importance.toFixed(2)})${tag}\n`);
     } catch (err) {
       console.error(`\n  Failed to save note: ${(err as Error).message}\n`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("doc <prompt...>")
+  .description("Generate a document (md, txt, html, pdf, docx, doc, rtf, odt) from a prompt.")
+  .option("-o, --out <path>", "Output file path (its extension selects the format)")
+  .option("-f, --format <fmt>", `Output format: ${SUPPORTED_FORMATS.join(", ")}`)
+  .option("--from-email <query>", "Base the document on a received email (Gmail search, e.g. \"from:sarah launch\")")
+  .option("--from-task <id>", "Base the document on a task Janjak extracted from your inbox")
+  .option("--context", "Ground the document in what Janjak knows about you")
+  .option("--model <model>", "OpenAI model to use (default gpt-4o-mini)")
+  .option("--open", "Open the document after it is created")
+  .action(async (
+    promptParts: string[],
+    opts: { out?: string; format?: string; fromEmail?: string; fromTask?: string; context?: boolean; model?: string; open?: boolean }
+  ) => {
+    const prompt = promptParts.join(" ").trim();
+    if (!prompt) {
+      console.error("Document prompt is empty.");
+      process.exit(1);
+    }
+
+    let format;
+    try {
+      format = inferFormat(opts.format, opts.out);
+    } catch (err) {
+      console.error(`\n  ${(err as Error).message}\n`);
+      process.exit(1);
+    }
+
+    // Optionally ground the document in specific source material.
+    const sourceParts: string[] = [];
+
+    if (opts.fromEmail) {
+      if (!isAuthenticated()) {
+        console.error("\n  Not connected to Gmail. Run: janjak login\n");
+        process.exit(1);
+      }
+      try {
+        const matches = await searchEmails(opts.fromEmail, 5);
+        if (matches.length === 0) {
+          console.error(`\n  No email matched "${opts.fromEmail}".\n`);
+          process.exit(1);
+        }
+        const email = matches[0];
+        const when = new Date(email.date).toISOString().slice(0, 10);
+        sourceParts.push(
+          `From: ${email.from}\nSubject: ${email.subject}\nDate: ${when}\n\n${email.body}`
+        );
+        console.log(`\n  📧 Using email: "${email.subject}" from ${email.from} (${when})`);
+      } catch (err) {
+        console.error(`\n  Could not read email: ${(err as Error).message}\n`);
+        process.exit(1);
+      }
+    }
+
+    if (opts.fromTask) {
+      const taskId = parseInt(opts.fromTask, 10);
+      if (Number.isNaN(taskId)) {
+        console.error(`\n  Invalid task id "${opts.fromTask}".\n`);
+        process.exit(1);
+      }
+      const task = getTaskById(taskId);
+      if (!task) {
+        console.error(`\n  No task found with id ${taskId}. See: janjak tasks\n`);
+        process.exit(1);
+      }
+
+      // Prefer the full original email when it is still reachable; otherwise
+      // fall back to the details Janjak stored about the task.
+      let added = false;
+      if (task.sourceEmailId && isAuthenticated()) {
+        try {
+          const email = await getEmailById(task.sourceEmailId);
+          if (email) {
+            const when = new Date(email.date).toISOString().slice(0, 10);
+            sourceParts.push(
+              `From: ${email.from}\nSubject: ${email.subject}\nDate: ${when}\n\n${email.body}`
+            );
+            added = true;
+          }
+        } catch {
+          // fall back to stored task fields below
+        }
+      }
+      if (!added) {
+        const lines = [
+          `Task: ${task.title}`,
+          task.person ? `From: ${task.person}` : "",
+          task.sourceSubject ? `Subject: ${task.sourceSubject}` : "",
+          task.deadline ? `Deadline: ${task.deadline}` : "",
+          task.description ? `\n${task.description}` : "",
+        ].filter(Boolean);
+        sourceParts.push(lines.join("\n"));
+      }
+      console.log(`\n  📋 Using task #${taskId}: ${task.title}`);
+    }
+
+    const source = sourceParts.length ? sourceParts.join("\n\n---\n\n") : undefined;
+
+    const ext = format === "markdown" ? "md" : format;
+    let outPath: string;
+    if (opts.out) {
+      outPath = isAbsolute(opts.out) ? opts.out : resolve(process.cwd(), opts.out);
+      if (!extname(outPath)) outPath += `.${ext}`;
+    } else {
+      outPath = resolve(process.cwd(), `${slugify(prompt)}.${ext}`);
+    }
+
+    console.log(`\n  ✍️  Generating ${ext.toUpperCase()} document…`);
+    try {
+      const doc = await generateDocument({
+        prompt,
+        outPath,
+        format,
+        model: opts.model,
+        useContext: !!opts.context,
+        source,
+      });
+      console.log(`  ✓ ${doc.title}`);
+      console.log(`  📄 ${doc.path}\n`);
+      if (opts.open) {
+        try { await open(doc.path); } catch {}
+      }
+    } catch (err) {
+      console.error(`\n  Failed to generate document: ${(err as Error).message}\n`);
       process.exit(1);
     }
   });
@@ -1063,11 +1194,52 @@ program
   .command("ask")
   .description("Ask Janjak anything about your work patterns. Natural language.")
   .argument("<question...>", "Your question (e.g. 'what did I do yesterday?')")
-  .action(async (words: string[]) => {
+  .option("--file <path...>", "Attach document(s) to analyze (pdf, docx, doc, rtf, odt, txt, md, html)")
+  .option("--from-email <query>", "Attach an email to analyze (Gmail search, e.g. 'from:michaella')")
+  .action(async (words: string[], opts: { file?: string[]; fromEmail?: string }) => {
     const question = words.join(" ");
+
+    // Gather any attached material (documents and/or an email) to reason about.
+    const attachmentParts: string[] = [];
+
+    if (opts.file?.length) {
+      for (const f of opts.file) {
+        const abs = isAbsolute(f) ? f : resolve(process.cwd(), f);
+        try {
+          const text = await readDocument(abs);
+          attachmentParts.push(`[Document: ${basename(abs)}]\n${text}`);
+          console.log(`📎 Read ${basename(abs)}`);
+        } catch (err) {
+          console.error(`⚠️  ${err instanceof Error ? err.message : err}`);
+          return;
+        }
+      }
+    }
+
+    if (opts.fromEmail) {
+      if (!isAuthenticated()) {
+        console.log("🔐 To analyze an email, connect Gmail first. Run: janjak login");
+        return;
+      }
+      try {
+        const matches = await searchEmails(opts.fromEmail, 1);
+        if (matches.length === 0) {
+          console.log(`📧 No email found matching "${opts.fromEmail}". Try a different sender or subject.`);
+          return;
+        }
+        const email = matches[0]!;
+        attachmentParts.push(`[Email from ${email.from} — "${email.subject}"]\n${email.body}`);
+        console.log(`📧 Read email from ${email.from}`);
+      } catch (err) {
+        console.error(`⚠️  Could not read that email: ${err instanceof Error ? err.message : err}`);
+        return;
+      }
+    }
+
+    const attachments = attachmentParts.join("\n\n---\n\n");
     console.log("\n🤔 Thinking...\n");
     try {
-      const answer = await askJanjak(question);
+      const answer = await askJanjak(question, [], attachments ? { attachments } : {});
       console.log(`  ${answer}\n`);
     } catch (err) {
       console.error("Error:", err instanceof Error ? err.message : err);

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-app/
 .env
 *.db
 .janjak/
@@ -22,3 +23,6 @@ gmail-tokens.json
 *.tsbuildinfo
 *.wav
 *.mp3
+
+# Build caches
+.cache/

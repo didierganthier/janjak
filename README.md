@@ -75,6 +75,7 @@ Janjak's 5-layer "super brain": it remembers, builds a model of you, learns from
 | Command | Description |
 |---------|-------------|
 | `janjak note "<text>"` | Capture a note into semantic memory. |
+| `janjak doc "<prompt>"` | Generate a document (md, txt, html, pdf, docx, doc, rtf, odt) from a prompt. |
 | `janjak recall "<query>"` | Semantic search across everything Janjak remembers. |
 | `janjak recall -t <type>` | Filter recall by source (note, email, voice, calendar, …). |
 | `janjak memory` | List recent stored memories. |
@@ -94,6 +95,30 @@ Janjak's 5-layer "super brain": it remembers, builds a model of you, learns from
 | `janjak summary today` | Synthesized summary of today. |
 | `janjak summary week` | Weekly review: what you worked on, pattern changes, new entities, goals. |
 | `janjak review` | Interactive weekly review — confirm goals & preferences to lock them in. |
+
+**Generate documents** in any format from a prompt — optionally based on an email you received or a task from your inbox:
+```bash
+janjak doc "Q3 status update for the Janjak app" -o status.pdf --open
+janjak doc "Reply-ready FAQ for support" --from-email "from:sarah launch" -f docx
+janjak doc "Prep brief with an agenda + checklist" --from-task 29 -o brief.pdf
+janjak doc "Meeting agenda for tomorrow" --context           # grounded in your memory
+```
+Formats: `md`, `txt`, `html`, `pdf`, `docx`, `doc`, `rtf`, `odt`. The format is taken from `-f` or the `-o` file extension (defaults to Markdown). `--from-email` uses Gmail search; `--from-task <id>` pulls a task Janjak already extracted from your inbox (falling back to its stored details if the original email is gone). PDF needs Xcode Command Line Tools; every other format works out of the box.
+
+You can also generate documents **conversationally** — just ask:
+```bash
+janjak ask "write me a one-paragraph status report about my week and save it as a pdf"
+janjak ask "draft a short memo about our Q3 launch plan and save it as a word doc"
+```
+Janjak detects the request, picks the format from your words (defaults to PDF, with an automatic fall-back to Word if Xcode tools aren't installed), grounds it in what it knows about you, and saves the file to your Desktop. This works through voice too.
+
+**Analyze documents & emails** — attach a file (and/or an email) and ask for Janjak's thoughts:
+```bash
+janjak ask "Thoughts on this? Anything I should be careful about before signing?" --file ~/Desktop/nda.pdf
+janjak ask "Summarize these and compare them" --file plan-a.docx --file plan-b.docx
+janjak ask "Thoughts on this and on Michaella's email?" --file ~/nda.pdf --from-email "from:michaella"
+```
+`--file` reads PDF, docx, doc, rtf, odt, txt, md, html (and csv/json); `--from-email` pulls a matching email via Gmail search. Janjak gives a structured analysis — key points, risks, things to clarify, and a recommendation. Reading PDFs needs Xcode Command Line Tools; the other formats work out of the box.
 
 ### Privacy & Data Control
 
@@ -276,7 +301,10 @@ web/
 
 ### Installation
 
-**Option 1 — One-line installer (recommended):**
+**Option 0 — macOS app (no terminal):**
+Download `Janjak.dmg` from the [latest release](https://github.com/didierganthier/janjak/releases), drag **Janjak** into Applications, then right-click → **Open** the first time. It starts the background engine and opens the dashboard automatically. No separate install needed — the app ships its own Node.js runtime. (The `.dmg` is built for Apple Silicon.)
+
+**Option 1 — One-line installer (recommended for CLI users):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/didierganthier/janjak/main/install.sh | bash
 ```
@@ -294,6 +322,14 @@ npm install
 npm run build
 npm link
 ```
+
+**Build the macOS app/installer yourself:**
+```bash
+npm run app        # builds dist-app/Janjak.app (double-clickable)
+npm run dmg        # packages it into dist-app/Janjak-<version>.dmg
+npm run notarize   # signs + notarizes for distribution (needs an Apple Developer ID)
+```
+The bundle ships the compiled app, production dependencies, and a vendored Node.js runtime — so it runs on a clean Mac with nothing pre-installed (built for the host's architecture). `npm run app`/`npm run dmg` produce an ad-hoc‑signed build, so first launch needs a right-click → Open. To ship a `.dmg` that opens with a normal double‑click, run `npm run notarize` with your Apple “Developer ID Application” certificate (see the header of `scripts/notarize.sh` for the required environment variables).
 
 ### Configuration
 

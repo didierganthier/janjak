@@ -8,11 +8,16 @@ import { getTodayStats, getDailySummaries, getTasks, getRecentSessions, getTopAp
 import { getBehavioralProfile } from "./memory.js";
 import { getTodayScore, getWeeklyScores } from "./score.js";
 import { isAuthenticated } from "./gmail-auth.js";
-import { fetchRecentEmails } from "./gmail-client.js";
+import { fetchRecentEmails, searchEmails } from "./gmail-client.js";
 import { looksLikeTaskCreation, createTaskFromText, formatCreatedTask } from "./nl-tasks.js";
 import { recall, capture, formatHitsForPrompt } from "./memory/recall.js";
 import { formatEntityContextForPrompt } from "./graph/query.js";
 import { formatPersonalContextForPrompt } from "./personal/synthesis.js";
+import { generateDocument, slugify, resolveFormat, type DocFormat } from "./doc.js";
+import { fetchLiveInfo } from "./live.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { existsSync } from "node:fs";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -138,16 +143,177 @@ function isEmailRelated(question: string): boolean {
   return EMAIL_KEYWORDS.test(question);
 }
 
-async function fetchEmailContext(): Promise<string> {
-  if (!isAuthenticated()) return "";
+// ─── Conversational document generation ─────────────────────────
+// Lets the user say "write me a PDF summarizing my week" inside `janjak ask`
+// (and voice/daemon chat) and get a real file back.
+
+const DOC_REQUEST_VERB = /\b(create|make|generate|write|draft|produce|prepare|put together|g[ée]n[èe]re|cr[ée]e|r[ée]dige|[ée]cris|pr[ée]pare)\b/i;
+const DOC_REQUEST_NOUN = /\b(document|doc|pdf|word\s?doc|docx|report|memo|letter|brief|summary|essay|proposal|agenda|minutes|write[- ]?up|rapport|lettre|r[ée]sum[ée]|compte[- ]?rendu)\b/i;
+const DOC_REQUEST_NEGATIVE = /\b(task|to-?do|remind me|reminder|calendar event)\b/i;
+
+/** Quick check if a message is asking to generate a document/file. */
+export function looksLikeDocRequest(text: string): boolean {
+  if (DOC_REQUEST_NEGATIVE.test(text)) return false;
+  return DOC_REQUEST_VERB.test(text) && DOC_REQUEST_NOUN.test(text);
+}
+
+interface ParsedDocRequest {
+  isDoc: boolean;
+  prompt: string;
+  format: DocFormat;
+  filename: string | null;
+  emailQuery: string | null;
+}
+
+async function parseDocRequest(text: string): Promise<ParsedDocRequest | null> {
+  const client = getOpenAIClient();
+  const res = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    response_format: { type: "json_object" },
+    temperature: 0,
+    messages: [
+      {
+        role: "system",
+        content: `Extract a document-generation request. Respond with JSON only.
+{
+  "isDoc": true or false,        // true only if the user wants a document/file created
+  "prompt": "a clear instruction describing the document to write",
+  "format": "pdf|docx|doc|md|txt|html|rtf|odt",  // pick from the user's words; default "pdf"
+  "filename": "a short 2-5 word file name (no extension) summarizing the document",
+  "emailQuery": "a Gmail search query if the document should be based on an email, else null"
+}
+Rules:
+- If no explicit format is mentioned, use "pdf". Always provide a concise "filename".
+- Set "emailQuery" only when the user references an email as the source. Translate it to Gmail search syntax:
+  - "my unread email" / "the latest unread email" -> "is:unread"
+  - "the email from sarah about the launch" -> "from:sarah launch"
+  - "the invoice email" -> "subject:invoice"
+  Otherwise set "emailQuery" to null.`,
+      },
+      { role: "user", content: text },
+    ],
+  });
   try {
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}");
+    if (!parsed.isDoc) return null;
+    const format = resolveFormat(String(parsed.format ?? "pdf")) ?? "pdf";
+    return {
+      isDoc: true,
+      prompt: typeof parsed.prompt === "string" && parsed.prompt.trim() ? parsed.prompt : text,
+      format,
+      filename: typeof parsed.filename === "string" && parsed.filename.trim() ? parsed.filename : null,
+      emailQuery: typeof parsed.emailQuery === "string" && parsed.emailQuery.trim() ? parsed.emailQuery : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function handleDocRequest(text: string): Promise<string> {
+  const parsed = await parseDocRequest(text);
+  if (!parsed) return ""; // not actually a document request on closer inspection
+
+  // Optionally ground the document in a real email.
+  let source: string | undefined;
+  if (parsed.emailQuery) {
+    if (!isAuthenticated()) {
+      return "To base a document on your email, connect Gmail first: janjak login";
+    }
+    try {
+      const matches = await searchEmails(parsed.emailQuery, 1);
+      if (matches.length === 0) {
+        return `I couldn't find an email matching "${parsed.emailQuery}". Try being more specific about the sender or subject.`;
+      }
+      const email = matches[0]!;
+      source = `From: ${email.from}\nSubject: ${email.subject}\nDate: ${new Date(email.date).toLocaleString()}\n\n${email.body}`;
+    } catch (err) {
+      return `I couldn't read that email: ${(err as Error).message}`;
+    }
+  }
+
+  const dir = existsSync(join(homedir(), "Desktop")) ? join(homedir(), "Desktop") : homedir();
+  const base = slugify(parsed.filename ?? parsed.prompt);
+  const ext = parsed.format === "markdown" ? "md" : parsed.format;
+  const outPath = join(dir, `${base}.${ext}`);
+
+  try {
+    const doc = await generateDocument({
+      prompt: parsed.prompt,
+      outPath,
+      format: parsed.format,
+      useContext: true,
+      source,
+    });
+    return `📄 Done — I created "${doc.title}" and saved it to ${doc.path}`;
+  } catch (err) {
+    const message = (err as Error).message;
+    // PDF needs Xcode tools; quietly fall back to a Word document instead.
+    if (parsed.format === "pdf" && /swiftc|Xcode/i.test(message)) {
+      try {
+        const fallback = await generateDocument({
+          prompt: parsed.prompt,
+          outPath: join(dir, `${base}.docx`),
+          format: "docx",
+          useContext: true,
+          source,
+        });
+        return `📄 Done — I created "${fallback.title}" as a Word document (PDF needs Xcode tools) and saved it to ${fallback.path}`;
+      } catch (err2) {
+        return `I couldn't create that document: ${(err2 as Error).message}`;
+      }
+    }
+    return `I couldn't create that document: ${message}`;
+  }
+}
+
+/**
+ * Build a Gmail search query from a natural question when it references a
+ * specific sender, subject, or topic — so Janjak can find read emails too,
+ * not just unread ones. Returns null for generic "what are my emails" asks.
+ */
+function buildEmailSearchQuery(question: string): string | null {
+  const q = question.trim();
+  // "email from Sarah", "emails from Michaela", "from John"
+  let m = q.match(/\bemails?\s+(?:from|by)\s+([A-Za-z][\w.''-]+)/i)
+       ?? q.match(/\bfrom\s+([A-Z][\w.''-]+)/);
+  if (m) return `from:${m[1]}`;
+  // "Sarah's email", "Michaela's message"
+  m = q.match(/\b([A-Z][a-z]+)['']s?\s+(?:email|emails|message|messages|mail)\b/);
+  if (m) return `from:${m[1]}`;
+  // "about the invoice", "regarding the launch", "email about X"
+  m = q.match(/\b(?:about|regarding|re:?|on)\s+(?:the\s+|my\s+)?([a-z0-9][\w ]{2,30})/i);
+  if (m) return m[1].trim().split(/\s+/).slice(0, 4).join(" ");
+  return null;
+}
+
+async function fetchEmailContext(question: string): Promise<string> {
+  if (!isAuthenticated()) {
+    return "\nEMAIL ACCESS: Gmail is NOT connected, so you cannot see the user's inbox. Since they asked something email-related, tell them to connect Gmail first by running: janjak login";
+  }
+  try {
+    // Targeted search (read + unread, all folders) when a sender/subject is named.
+    const query = buildEmailSearchQuery(question);
+    if (query) {
+      const found = await searchEmails(query, 5);
+      if (found.length === 0) {
+        return `\nEMAIL ACCESS: Gmail IS connected. A search for "${query}" (read and unread, across all folders) returned no matching emails.`;
+      }
+      const list = found.map((e, i) => {
+        const date = new Date(e.date).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        const preview = (e.body || e.snippet || "").replace(/\s+/g, " ").slice(0, 300);
+        return `${i + 1}. From: ${e.from} | Subject: ${e.subject} | ${date}\n   ${preview}`;
+      }).join("\n");
+      return `\nEMAIL ACCESS: Gmail IS connected.\nSEARCH RESULTS for "${query}" (read + unread, ${found.length} found):\n${list}`;
+    }
+
+    // Otherwise, summarize recent unread inbox.
     const emails = await fetchRecentEmails(10);
-    if (emails.length === 0) return "\nUNREAD EMAILS:\nNo unread emails in inbox.";
+    if (emails.length === 0) return "\nEMAIL ACCESS: Gmail IS connected.\nUNREAD EMAILS:\nNo unread emails in inbox.";
     const list = emails.map((e, i) => {
       const date = new Date(e.date).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
       return `${i + 1}. From: ${e.from} | Subject: ${e.subject} | ${date}\n   Preview: ${e.snippet?.slice(0, 150) ?? ""}`;
     }).join("\n");
-    return `\nUNREAD EMAILS (${emails.length}):\n${list}`;
+    return `\nEMAIL ACCESS: Gmail IS connected.\nUNREAD EMAILS (${emails.length}):\n${list}`;
   } catch {
     return "";
   }
@@ -175,15 +341,41 @@ function detectAndSaveName(question: string, response: string): void {
 }
 
 /** Ask Janjak a natural language question about your work data */
-export async function askJanjak(question: string, history: ChatMessage[] = []): Promise<string> {
+export interface AskOptions {
+  /** Raw text of documents/emails the user attached and wants analyzed. */
+  attachments?: string;
+}
+
+export async function askJanjak(question: string, history: ChatMessage[] = [], opts: AskOptions = {}): Promise<string> {
   const client = getOpenAIClient();
+
+  // Conversational document generation: "write me a PDF summarizing my week".
+  if (looksLikeDocRequest(question)) {
+    const docResult = await handleDocRequest(question);
+    if (docResult) return docResult;
+  }
+
   let context = buildContext();
   const characterName = getCharacterName();
 
+  // Attached material (uploaded documents / a specific email) to reason about.
+  const hasAttachments = !!opts.attachments && opts.attachments.trim().length > 0;
+  if (hasAttachments) {
+    context += `\n\nATTACHED MATERIAL (the user shared this and wants your thoughts/analysis on it — base your answer primarily on this content):\n${opts.attachments}`;
+  }
+
   // Enrich with email data when the question is email-related
   if (isEmailRelated(question)) {
-    const emailCtx = await fetchEmailContext();
+    const emailCtx = await fetchEmailContext(question);
     if (emailCtx) context += emailCtx;
+  }
+
+  // Enrich with real-time info (e.g. weather) that isn't in local history.
+  try {
+    const liveCtx = await fetchLiveInfo(question);
+    if (liveCtx) context += liveCtx;
+  } catch {
+    // best-effort — never blocks the answer
   }
 
   // Semantic recall: pull relevant past memories before generating.
@@ -221,11 +413,15 @@ When the user asks about time periods:
 - "today" = today's data
 
 When giving advice, ground it in their actual patterns (peak hours, scores, trends).
-When the user asks about emails, summarize their unread emails clearly — mention sender, subject, and urgency. Suggest which to respond to first.
+When the user asks about emails, summarize the relevant emails clearly — mention sender, subject, and urgency. Suggest which to respond to first. You can see BOTH read and unread emails: when the user names a sender, subject, or topic, the USER DATA includes search results across their whole mailbox (read + unread). Never claim you can only see unread emails.
+The USER DATA section reflects the user's CURRENT, live state and always takes priority over older memories or past conversation. If it shows "Gmail IS connected" or lists emails, Gmail is connected — answer using that data and never tell the user to run "janjak login". Only mention connecting Gmail if the live data explicitly says Gmail is NOT connected.
+If the USER DATA contains a "LIVE WEATHER" line, use it to answer weather questions directly with those real numbers — don't say you can't access live weather.
+About yourself: you DO learn and improve over time. You remember past conversations (semantic memory), learn the user's preferences and routines, build a graph of the people and projects they mention, and track their behavioral patterns. When asked if you learn or self-improve, answer honestly and concretely based on this — don't say you can't learn.
 When the user tells you their name, remember it and use it naturally.
 Use 1-2 emoji naturally. Don't be overly enthusiastic — be like a smart, calm friend.
 Maintain conversation context — if the user refers to something from a previous message ("this", "that", "it"), use the conversation history to understand what they mean.
 Respond in the same language the user speaks to you.
+${hasAttachments ? "\nThe user attached material (a document and/or an email) under ATTACHED MATERIAL. Give a thoughtful, well-structured analysis of it: summarize the key points, flag anything important, risky, or that needs clarification, and end with a clear recommendation. You may use short sections or bullet points and write as much as the content warrants — depth matters more than brevity here.\n" : ""}
 
 ${memoryBlock ? memoryBlock + "\n\n" : ""}${entityBlock ? entityBlock + "\n\n" : ""}${personalBlock ? personalBlock + "\n\n" : ""}USER DATA:
 ${context}`;
@@ -240,7 +436,7 @@ ${context}`;
   const response = await client.chat.completions.create({
     model: "gpt-4o-mini",
     messages,
-    max_tokens: 400,
+    max_tokens: hasAttachments ? 800 : 400,
     temperature: 0.7,
   });
 
@@ -250,15 +446,20 @@ ${context}`;
   detectAndSaveName(question, answer);
 
   // Capture the Q+A pair as a semantic memory (best-effort, never blocks).
-  try {
-    await capture({
-      type: "ai_chat",
-      text: `Q: ${question}\nA: ${answer}`,
-      metadata: { character: characterName },
-      importance: 0.5,
-    });
-  } catch {
-    // ignore — embeddings are best-effort
+  // Skip transient system-status answers (e.g. "Gmail not connected, run janjak
+  // login") so they don't later get recalled and override the live state.
+  const isTransientStatus = /janjak login|not connected|couldn't process|i couldn't/i.test(answer);
+  if (!isTransientStatus) {
+    try {
+      await capture({
+        type: "ai_chat",
+        text: `Q: ${question}\nA: ${answer}`,
+        metadata: { character: characterName },
+        importance: 0.5,
+      });
+    } catch {
+      // ignore — embeddings are best-effort
+    }
   }
 
   return answer;

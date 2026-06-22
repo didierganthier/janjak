@@ -22,8 +22,13 @@ function getOpenAIClient(): OpenAI {
 
 const TASK_PATTERNS = /\b(remind me|add a task|create a task|new task|i need to|i have to|i should|i must|don't forget|note to self|add to my list|schedule|deadline|put on my list|rappelle[- ]?moi|ajoute|n'oublie pas|faudrait que|je dois)\b/i;
 
+// Question-style phrasings that look like tasks but aren't (e.g. "I need to
+// know the weather"). These are requests for information, not things to do.
+const TASK_NEGATIVE = /\b(need to know|need to find out|need to understand|need to see|need to figure out|i need to check the weather|what('|i)?s|how (do|can|much|many)|do you|can you)\b/i;
+
 /** Quick check if a message looks like it wants to create a task */
 export function looksLikeTaskCreation(text: string): boolean {
+  if (TASK_NEGATIVE.test(text)) return false;
   return TASK_PATTERNS.test(text);
 }
 

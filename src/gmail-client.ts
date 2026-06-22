@@ -1,5 +1,5 @@
 // ─── Gmail Client: Fetches and parses recent emails ────────────────
-import { google } from "googleapis";
+import { gmail as gmailApi } from "@googleapis/gmail";
 import { getAuthenticatedClient } from "./gmail-auth.js";
 import type { EmailMessage } from "./types.js";
 
@@ -46,7 +46,7 @@ function getHeader(headers: Array<{ name?: string | null; value?: string | null 
 
 export async function fetchRecentEmails(maxResults = 15): Promise<EmailMessage[]> {
   const auth = await getAuthenticatedClient();
-  const gmail = google.gmail({ version: "v1", auth });
+  const gmail = gmailApi({ version: "v1", auth });
 
   // Fetch recent messages from inbox
   const listRes = await gmail.users.messages.list({
@@ -98,7 +98,7 @@ export async function getEmailSummary(): Promise<{
   emails: EmailMessage[];
 }> {
   const auth = await getAuthenticatedClient();
-  const gmail = google.gmail({ version: "v1", auth });
+  const gmail = gmailApi({ version: "v1", auth });
 
   // Get unread count
   const profileRes = await gmail.users.getProfile({ userId: "me" });
@@ -108,4 +108,82 @@ export async function getEmailSummary(): Promise<{
   const emails = await fetchRecentEmails(10);
 
   return { unreadCount, emails };
+}
+
+/**
+ * Search the mailbox using Gmail's query syntax (e.g. `from:sarah launch`,
+ * `subject:invoice`, `newer_than:7d`). Returns full email bodies (kept long
+ * enough to use as source material), newest first. Unlike fetchRecentEmails,
+ * this searches read mail and all categories.
+ */
+export async function searchEmails(query: string, maxResults = 5): Promise<EmailMessage[]> {
+  const auth = await getAuthenticatedClient();
+  const gmail = gmailApi({ version: "v1", auth });
+
+  const listRes = await gmail.users.messages.list({
+    userId: "me",
+    maxResults,
+    q: query,
+  });
+
+  const messageIds = listRes.data.messages ?? [];
+  if (messageIds.length === 0) return [];
+
+  const emails: EmailMessage[] = [];
+  for (const msg of messageIds) {
+    if (!msg.id) continue;
+
+    const detail = await gmail.users.messages.get({
+      userId: "me",
+      id: msg.id,
+      format: "full",
+    });
+
+    const headers = detail.data.payload?.headers ?? [];
+    const body = extractBody(detail.data.payload ?? {});
+    // Keep more of the body than the inbox scan — this is source material.
+    const truncatedBody = body.length > 8000 ? body.slice(0, 8000) + "..." : body;
+
+    emails.push({
+      id: msg.id,
+      threadId: detail.data.threadId ?? "",
+      from: getHeader(headers, "From"),
+      subject: getHeader(headers, "Subject"),
+      snippet: detail.data.snippet ?? "",
+      body: truncatedBody,
+      date: Number(detail.data.internalDate ?? 0),
+      labels: detail.data.labelIds ?? [],
+    });
+  }
+
+  emails.sort((a, b) => b.date - a.date);
+  return emails;
+}
+
+/** Fetch a single email by its Gmail message id (any folder/read state). */
+export async function getEmailById(id: string): Promise<EmailMessage | null> {
+  const auth = await getAuthenticatedClient();
+  const gmail = gmailApi({ version: "v1", auth });
+  try {
+    const detail = await gmail.users.messages.get({
+      userId: "me",
+      id,
+      format: "full",
+    });
+    const headers = detail.data.payload?.headers ?? [];
+    const body = extractBody(detail.data.payload ?? {});
+    const truncatedBody = body.length > 8000 ? body.slice(0, 8000) + "..." : body;
+    return {
+      id,
+      threadId: detail.data.threadId ?? "",
+      from: getHeader(headers, "From"),
+      subject: getHeader(headers, "Subject"),
+      snippet: detail.data.snippet ?? "",
+      body: truncatedBody,
+      date: Number(detail.data.internalDate ?? 0),
+      labels: detail.data.labelIds ?? [],
+    };
+  } catch {
+    return null;
+  }
 }

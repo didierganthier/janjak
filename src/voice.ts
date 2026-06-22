@@ -20,6 +20,7 @@ import { enterFocusMode, enterBreakMode, exitFocusMode } from "./engine.js";
 import { startPomodoro } from "./pomo.js";
 import { processInbox } from "./tasks.js";
 import { getSpokenBriefing } from "./morning.js";
+import { isAuthenticated, runOAuthFlow } from "./gmail-auth.js";
 import { looksLikeTaskCreation, createTaskFromText, formatCreatedTask, formatSpokenConfirmation } from "./nl-tasks.js";
 
 const JANJAK_DIR = join(homedir(), ".janjak");
@@ -297,6 +298,19 @@ interface DetectedAction {
 function detectAction(response: string, transcript: string): DetectedAction | null {
   const r = response.toLowerCase();
 
+  // Offer to connect Gmail directly when the answer says it isn't connected.
+  if (!isAuthenticated() && /janjak login|connect (your )?gmail|gmail is(n't| not) connected|not connected/i.test(r)) {
+    return {
+      label: "connect Gmail now",
+      execute: async () => {
+        await runOAuthFlow();
+        return isAuthenticated()
+          ? "Gmail connected! Ask me about your emails anytime."
+          : "Gmail wasn't connected. We can try again whenever you're ready.";
+      },
+    };
+  }
+
   // Break / rest suggestions
   if (/\b(take a break|grab a break|step away|rest|recharge|relax|pause|take some time off|disconnect)\b/.test(r)) {
     return { label: "start break mode", execute: async () => enterBreakMode() };
@@ -322,6 +336,9 @@ function detectAction(response: string, transcript: string): DetectedAction | nu
     return {
       label: "scan inbox for tasks",
       execute: async () => {
+        if (!isAuthenticated()) {
+          return "Gmail isn't connected yet. Run janjak login to connect your inbox first.";
+        }
         const result = await processInbox();
         return result.newTasks.length > 0
           ? `Found ${result.newTasks.length} new tasks from your emails.`
