@@ -187,3 +187,46 @@ export async function getEmailById(id: string): Promise<EmailMessage | null> {
     return null;
   }
 }
+
+/**
+ * Create a Gmail draft (saved server-side in the user's Drafts). Does NOT send.
+ * Requires the gmail.compose scope — throws a helpful error if not granted yet.
+ */
+export async function createDraft(
+  to: string,
+  subject: string,
+  body: string
+): Promise<{ id: string }> {
+  const auth = await getAuthenticatedClient();
+  const gmail = gmailApi({ version: "v1", auth });
+
+  const headerSubject = /[^\x00-\x7F]/.test(subject)
+    ? `=?UTF-8?B?${Buffer.from(subject, "utf-8").toString("base64")}?=`
+    : subject;
+
+  const raw = [
+    `To: ${to}`,
+    `Subject: ${headerSubject}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    body,
+  ].join("\r\n");
+  const encoded = Buffer.from(raw, "utf-8").toString("base64url");
+
+  try {
+    const res = await gmail.users.drafts.create({
+      userId: "me",
+      requestBody: { message: { raw: encoded } },
+    });
+    return { id: res.data.id ?? "" };
+  } catch (err) {
+    const msg = (err as Error).message ?? "";
+    if (/insufficient|scope|permission|forbidden|403/i.test(msg)) {
+      throw new Error(
+        "Gmail draft permission not granted yet. Re-run 'janjak login' to allow Janjak to compose drafts."
+      );
+    }
+    throw err;
+  }
+}

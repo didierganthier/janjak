@@ -13,7 +13,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
-import { askJanjak, type ChatMessage } from "./chat.js";
+import { type ChatMessage } from "./chat.js";
+import { runAgent } from "./agent/agent.js";
 import { getState } from "./db.js";
 import { setState } from "./db.js";
 import { enterFocusMode, enterBreakMode, exitFocusMode } from "./engine.js";
@@ -456,7 +457,7 @@ export async function voiceCommand(options: {
     console.log("  🧠 Thinking...");
     let response: string;
     try {
-      response = await askJanjak(transcript, history);
+      response = await runAgent(transcript, { history });
     } catch (err) {
       console.log("  ❌ AI error:", err instanceof Error ? err.message : "Unknown");
       return false;

@@ -25,7 +25,7 @@ import { searchEmails, getEmailById } from "./gmail-client.js";
 import { processInbox, formatInboxReport, formatAllTasks, updateTaskStatus } from "./tasks.js";
 import { formatInsights } from "./memory.js";
 import { getTodayScore, getWeeklyScores, formatWeeklyReport, getAIWeeklySummary } from "./score.js";
-import { askJanjak } from "./chat.js";
+import { runAgent } from "./agent/agent.js";
 import { sendNotification, notificationsAvailable } from "./notify.js";
 import { startPomodoro, getPomodoroStats } from "./pomo.js";
 import { formatStreakBadge, formatStreakReport } from "./streak.js";
@@ -1239,8 +1239,53 @@ program
     const attachments = attachmentParts.join("\n\n---\n\n");
     console.log("\n🤔 Thinking...\n");
     try {
-      const answer = await askJanjak(question, [], attachments ? { attachments } : {});
+      const answer = await runAgent(question, attachments ? { attachments } : {});
       console.log(`  ${answer}\n`);
+    } catch (err) {
+      console.error("Error:", err instanceof Error ? err.message : err);
+    }
+  });
+
+// ── do (agentic) ────────────────────────────────────────────────────
+program
+  .command("do")
+  .description("Tell Janjak to DO something. It plans, calls its tools (tasks, calendar, email, weather, documents…), and chains steps to complete the request.")
+  .argument("<request...>", "What you want done (e.g. 'check the weather in Port-au-Prince and draft a PDF trip plan')")
+  .action(async (words: string[]) => {
+    const request = words.join(" ");
+    const labels: Record<string, string> = {
+      get_focus_today: "checking today's focus",
+      list_tasks: "reading your tasks",
+      create_task: "creating a task",
+      get_calendar: "checking your calendar",
+      create_calendar_event: "adding a calendar event",
+      get_weather: "checking the weather",
+      search_email: "searching your email",
+      recall_memory: "recalling what I know",
+      who_is: "looking that up",
+      generate_document: "writing the document",
+      read_document: "reading the document",
+      web_search: "searching the web",
+      list_workflows: "checking your workflows",
+      run_workflow: "running the workflow",
+      draft_email: "drafting an email",
+      create_gmail_draft: "saving a Gmail draft",
+      save_note: "saving a note",
+      write_file: "writing a file",
+      list_directory: "listing files",
+      open_app: "opening the app",
+      open_url: "opening the link",
+      music_control: "controlling music",
+      send_notification: "sending a notification",
+    };
+    console.log("\n🧠 Working on it...\n");
+    try {
+      const answer = await runAgent(request, {
+        onStep: (step) => {
+          console.log(`   • ${labels[step.tool] ?? step.tool}…`);
+        },
+      });
+      console.log(`\n  ${answer}\n`);
     } catch (err) {
       console.error("Error:", err instanceof Error ? err.message : err);
     }

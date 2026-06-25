@@ -27,7 +27,8 @@ import { getCurrentProject } from "./project.js";
 import { getCalendarSummary, getMeetingAlert, getTodayEvents, getFreeSlots } from "./calendar.js";
 import { getGitHubDashSummary, isGitHubConfigured } from "./github.js";
 import { isAuthenticated } from "./gmail-auth.js";
-import { askJanjak, type ChatMessage } from "./chat.js";
+import { type ChatMessage } from "./chat.js";
+import { runAgent } from "./agent/agent.js";
 import { looksLikeTaskCreation, createTaskFromText, formatSpokenConfirmation } from "./nl-tasks.js";
 import { processInbox } from "./tasks.js";
 import { getSpokenBriefing, generateMorningBriefing } from "./morning.js";
@@ -264,7 +265,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     try {
       const char = getCharacter();
-      const response = await askJanjak(question, conversationHistory);
+      const response = await runAgent(question, { history: conversationHistory });
       conversationHistory.push({ role: "user", content: question });
       conversationHistory.push({ role: "assistant", content: response });
       // Keep history manageable
@@ -334,7 +335,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
 
       // Normal AI response
-      const response = await askJanjak(transcript, conversationHistory);
+      const response = await runAgent(transcript, { history: conversationHistory });
       conversationHistory.push({ role: "user", content: transcript });
       conversationHistory.push({ role: "assistant", content: response });
       if (conversationHistory.length > 20) conversationHistory.splice(0, 2);

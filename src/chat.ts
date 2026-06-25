@@ -44,7 +44,7 @@ function getOpenAIClient(): OpenAI {
 }
 
 /** Build a context snapshot of everything Janjak knows */
-function buildContext(): string {
+export function buildContext(): string {
   const userName = getState("user_name") ?? "there";
   const now = new Date();
   const dayName = now.toLocaleDateString("en-US", { weekday: "long" });

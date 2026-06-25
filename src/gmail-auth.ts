@@ -15,6 +15,7 @@ const CREDENTIALS_PATH = join(DATA_DIR, "gmail-credentials.json");
 
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.compose",
   "https://www.googleapis.com/auth/calendar",
 ];
 const REDIRECT_URI = "http://localhost";
