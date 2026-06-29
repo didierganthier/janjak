@@ -29,6 +29,14 @@ import { getGitHubDashSummary, isGitHubConfigured } from "./github.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import { type ChatMessage } from "./chat.js";
 import { runAgent } from "./agent/agent.js";
+import {
+  makePendingConfirm,
+  executePending,
+  getPending,
+  clearPending,
+  isAffirmative,
+  isNegative,
+} from "./agent/pending.js";
 import { looksLikeTaskCreation, createTaskFromText, formatSpokenConfirmation } from "./nl-tasks.js";
 import { processInbox } from "./tasks.js";
 import { getSpokenBriefing, generateMorningBriefing } from "./morning.js";
@@ -265,7 +273,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     }
     try {
       const char = getCharacter();
-      const response = await runAgent(question, { history: conversationHistory });
+      let response: string;
+      const parked = getPending("daemon");
+      if (parked && isAffirmative(question)) {
+        response = (await executePending("daemon")) ?? "There was nothing to confirm.";
+      } else if (parked && isNegative(question)) {
+        clearPending("daemon");
+        response = `Okay, I won't ${parked.description}.`;
+      } else {
+        response = await runAgent(question, {
+          history: conversationHistory,
+          confirm: makePendingConfirm("daemon"),
+        });
+      }
       conversationHistory.push({ role: "user", content: question });
       conversationHistory.push({ role: "assistant", content: response });
       // Keep history manageable
@@ -278,10 +298,38 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         spawn("afplay", [ttsPath], { stdio: "ignore", detached: true }).unref();
       }
 
-      json(res, { ok: true, character: char.name, response, spoken: !!ttsPath });
+      const pending = getPending("daemon");
+      json(res, {
+        ok: true,
+        character: char.name,
+        response,
+        spoken: !!ttsPath,
+        ...(pending ? { pendingConfirmation: pending.description } : {}),
+      });
     } catch (err) {
       json(res, { error: err instanceof Error ? err.message : "AI error" }, 500);
     }
+    return;
+  }
+
+  // ── Confirm or cancel a pending risky action ──
+  if (path === "/api/confirm" && method === "POST") {
+    const body = await readBody(req);
+    const approve = body.approve !== false; // default: approve
+    const parked = getPending("daemon");
+    if (!parked) {
+      json(res, { ok: true, response: "Nothing is awaiting confirmation." });
+      return;
+    }
+    let response: string;
+    if (approve) {
+      response = (await executePending("daemon")) ?? "There was nothing to confirm.";
+    } else {
+      clearPending("daemon");
+      response = `Okay, I won't ${parked.description}.`;
+    }
+    conversationHistory.push({ role: "assistant", content: response });
+    json(res, { ok: true, response });
     return;
   }
 
@@ -335,7 +383,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       }
 
       // Normal AI response
-      const response = await runAgent(transcript, { history: conversationHistory });
+      let response: string;
+      const parked = getPending("daemon");
+      if (parked && isAffirmative(transcript)) {
+        response = (await executePending("daemon")) ?? "There was nothing to confirm.";
+      } else if (parked && isNegative(transcript)) {
+        clearPending("daemon");
+        response = `Okay, I won't ${parked.description}.`;
+      } else {
+        response = await runAgent(transcript, {
+          history: conversationHistory,
+          confirm: makePendingConfirm("daemon"),
+        });
+      }
       conversationHistory.push({ role: "user", content: transcript });
       conversationHistory.push({ role: "assistant", content: response });
       if (conversationHistory.length > 20) conversationHistory.splice(0, 2);
@@ -343,7 +403,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       const ttsPath = await generateTTS(response);
       if (ttsPath) spawn("afplay", [ttsPath], { stdio: "ignore", detached: true }).unref();
 
-      json(res, { ok: true, character: char.name, transcript, response, spoken: !!ttsPath });
+      const pending = getPending("daemon");
+      json(res, {
+        ok: true,
+        character: char.name,
+        transcript,
+        response,
+        spoken: !!ttsPath,
+        ...(pending ? { pendingConfirmation: pending.description } : {}),
+      });
     } catch (err) {
       json(res, { error: err instanceof Error ? err.message : "Voice error" }, 500);
     }

@@ -116,6 +116,11 @@ function textPrompt(question: string): Promise<string> {
   });
 }
 
+/** Approval gate passed to the agent for risky (confirm-tier) tool calls. */
+function agentConfirm(req: { description: string }): Promise<boolean> {
+  return confirmPrompt(`\n⚠️  Janjak wants to ${req.description}.\n   Proceed? [y/N] `);
+}
+
 const program = new Command();
 
 program
@@ -1239,7 +1244,10 @@ program
     const attachments = attachmentParts.join("\n\n---\n\n");
     console.log("\n🤔 Thinking...\n");
     try {
-      const answer = await runAgent(question, attachments ? { attachments } : {});
+      const answer = await runAgent(question, {
+        confirm: agentConfirm,
+        ...(attachments ? { attachments } : {}),
+      });
       console.log(`  ${answer}\n`);
     } catch (err) {
       console.error("Error:", err instanceof Error ? err.message : err);
@@ -1270,6 +1278,7 @@ program
       run_workflow: "running the workflow",
       draft_email: "drafting an email",
       create_gmail_draft: "saving a Gmail draft",
+      send_email: "sending an email",
       save_note: "saving a note",
       write_file: "writing a file",
       list_directory: "listing files",
@@ -1281,6 +1290,7 @@ program
     console.log("\n🧠 Working on it...\n");
     try {
       const answer = await runAgent(request, {
+        confirm: agentConfirm,
         onStep: (step) => {
           console.log(`   • ${labels[step.tool] ?? step.tool}…`);
         },

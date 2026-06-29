@@ -7,7 +7,7 @@
 
 import type OpenAI from "openai";
 import { homedir } from "node:os";
-import { join, isAbsolute, resolve } from "node:path";
+import { join, isAbsolute, resolve, sep } from "node:path";
 import { writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
@@ -20,7 +20,7 @@ import { getEntityProfile, formatEntityProfile } from "../graph/query.js";
 import { generateDocument, readDocument, resolveFormat, slugify, type DocFormat } from "../doc.js";
 import { getWeather } from "../live.js";
 import { isAuthenticated } from "../gmail-auth.js";
-import { searchEmails, createDraft } from "../gmail-client.js";
+import { searchEmails, createDraft, sendEmail } from "../gmail-client.js";
 import { getAllWorkflows, runWorkflowById, isWorkflowsEnabled } from "../workflows.js";
 import { openInEmailApp } from "../reply.js";
 import { capture } from "../memory/recall.js";
@@ -33,6 +33,11 @@ export interface AgentTool {
   schema: OpenAI.Chat.Completions.ChatCompletionTool;
   /** Execute the tool. Returns a string observation fed back to the model. */
   handler: (args: Record<string, unknown>) => Promise<string>;
+  /**
+   * Risk level. "confirm" tools take an external or hard-to-reverse action and
+   * require user approval before they run. Defaults to "safe".
+   */
+  risk?: "safe" | "confirm";
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -47,6 +52,63 @@ function num(args: Record<string, unknown>, key: string): number | undefined {
   if (typeof v === "number") return v;
   if (typeof v === "string" && v.trim() && !Number.isNaN(Number(v))) return Number(v);
   return undefined;
+}
+
+// ─── Write sandbox ────────────────────────────────────────────────
+// write_file may only write inside these roots, even with an absolute path.
+const ALLOWED_WRITE_ROOTS = [
+  join(homedir(), "Desktop"),
+  join(homedir(), "Documents"),
+  join(homedir(), "Downloads"),
+  join(homedir(), ".janjak"),
+];
+const ALLOWED_WRITE_LABEL = "Desktop, Documents, Downloads, or the Janjak folder";
+
+function isWithinAllowedRoots(abs: string): boolean {
+  const target = resolve(abs);
+  return ALLOWED_WRITE_ROOTS.some((root) => {
+    const r = resolve(root);
+    return target === r || target.startsWith(r + sep);
+  });
+}
+
+/**
+ * Resolve a user-supplied write path. Absolute paths and ~ are honored; a bare
+ * relative path defaults to the Desktop, but a path that already begins with an
+ * allowlisted folder (Desktop/Documents/Downloads) is joined to home directly
+ * so we don't end up with e.g. ~/Desktop/Desktop/file.txt.
+ */
+function resolveWritePath(p: string): string {
+  let raw = p.trim();
+  if (raw.startsWith("~/")) raw = raw.slice(2);
+  if (isAbsolute(raw)) return raw;
+  const first = raw.split(/[\\/]/)[0]?.toLowerCase();
+  if (first === "desktop" || first === "documents" || first === "downloads" || first === ".janjak") {
+    return join(homedir(), raw);
+  }
+  return join(homedir(), "Desktop", raw);
+}
+
+/** Human-friendly description of a (usually risky) action, for confirm prompts and audit logs. */
+export function describeAction(tool: string, args: Record<string, unknown>): string {
+  switch (tool) {
+    case "write_file":
+      return `write a file to ${str(args, "path") ?? "Desktop"}`;
+    case "create_calendar_event":
+      return `create a calendar event "${str(args, "title") ?? ""}" on ${str(args, "date") ?? "?"}${
+        str(args, "startTime") ? " at " + str(args, "startTime") : ""
+      }`;
+    case "run_workflow":
+      return `run the workflow "${str(args, "id") ?? ""}"`;
+    case "create_gmail_draft":
+      return `save a Gmail draft to ${str(args, "to") ?? ""} ("${str(args, "subject") ?? ""}")`;
+    case "send_email":
+      return `send an email to ${str(args, "to") ?? ""} ("${str(args, "subject") ?? ""}")`;
+    case "draft_email":
+      return `open an email draft to ${str(args, "to") ?? ""} ("${str(args, "subject") ?? ""}")`;
+    default:
+      return tool.replace(/_/g, " ");
+  }
 }
 
 // ─── Tool definitions ─────────────────────────────────────────────
@@ -145,6 +207,7 @@ const tools: AgentTool[] = [
   },
 
   {
+    risk: "confirm",
     schema: {
       type: "function",
       function: {
@@ -381,6 +444,7 @@ const tools: AgentTool[] = [
   },
 
   {
+    risk: "confirm",
     schema: {
       type: "function",
       function: {
@@ -407,6 +471,7 @@ const tools: AgentTool[] = [
   },
 
   {
+    risk: "confirm",
     schema: {
       type: "function",
       function: {
@@ -439,6 +504,7 @@ const tools: AgentTool[] = [
   },
 
   {
+    risk: "confirm",
     schema: {
       type: "function",
       function: {
@@ -465,6 +531,43 @@ const tools: AgentTool[] = [
       try {
         await createDraft(to, subject, body);
         return `Saved a Gmail draft to ${to} ("${subject}"). The user can review and send it from Gmail.`;
+      } catch (err) {
+        return (err as Error).message;
+      }
+    },
+  },
+
+  {
+    risk: "confirm",
+    schema: {
+      type: "function",
+      function: {
+        name: "send_email",
+        description:
+          "Send an email immediately from the user's Gmail. This delivers the message right away — only use when the user clearly wants to SEND (not just draft). The recipient must be a real email address; resolve names with who_is first if needed.",
+        parameters: {
+          type: "object",
+          properties: {
+            to: { type: "string", description: "Recipient email address." },
+            subject: { type: "string", description: "Email subject line." },
+            body: { type: "string", description: "The full email body you composed." },
+          },
+          required: ["to", "subject", "body"],
+        },
+      },
+    },
+    handler: async (args) => {
+      if (!isAuthenticated()) return "Gmail is not connected. The user should run 'janjak login'.";
+      const to = str(args, "to");
+      const subject = str(args, "subject");
+      const body = str(args, "body");
+      if (!to || !subject || !body) return "ERROR: 'to', 'subject' and 'body' are all required.";
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
+        return `"${to}" is not a valid email address. Resolve the recipient first.`;
+      }
+      try {
+        await sendEmail(to, subject, body);
+        return `Sent an email to ${to} ("${subject}").`;
       } catch (err) {
         return (err as Error).message;
       }
@@ -500,6 +603,7 @@ const tools: AgentTool[] = [
   },
 
   {
+    risk: "confirm",
     schema: {
       type: "function",
       function: {
@@ -521,7 +625,10 @@ const tools: AgentTool[] = [
       const p = str(args, "path");
       const content = typeof args["content"] === "string" ? (args["content"] as string) : undefined;
       if (!p || content === undefined) return "ERROR: 'path' and 'content' are required.";
-      const abs = isAbsolute(p) ? p : join(homedir(), "Desktop", p);
+      const abs = resolveWritePath(p);
+      if (!isWithinAllowedRoots(abs)) {
+        return `For safety I can only write inside ${ALLOWED_WRITE_LABEL}. "${abs}" is outside those.`;
+      }
       const overwrite = args["overwrite"] === true;
       if (existsSync(abs) && !overwrite) {
         return `A file already exists at ${abs}. Set overwrite=true to replace it.`;

@@ -8,9 +8,10 @@
 import OpenAI from "openai";
 import { getState } from "../db.js";
 import { capture } from "../memory/recall.js";
+import { logDecision } from "../learning/explain.js";
 import { formatPersonalContextForPrompt } from "../personal/synthesis.js";
 import { buildContext } from "../chat.js";
-import { getAgentTools, getToolSchemas, findTool } from "./tools.js";
+import { getAgentTools, getToolSchemas, findTool, describeAction } from "./tools.js";
 
 const MODEL = "gpt-4o-mini";
 const MAX_STEPS = 8;
@@ -22,6 +23,15 @@ export interface AgentStep {
   args: Record<string, unknown>;
 }
 
+export interface ConfirmRequest {
+  /** Tool name about to run. */
+  tool: string;
+  /** Human-friendly description of the action. */
+  description: string;
+  /** Arguments the tool will receive. */
+  args: Record<string, unknown>;
+}
+
 export interface RunAgentOptions {
   /** Prior conversation turns for follow-up requests. */
   history?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -29,6 +39,12 @@ export interface RunAgentOptions {
   onStep?: (step: AgentStep) => void;
   /** Extra material (documents, an email body) for the agent to reason about. */
   attachments?: string;
+  /**
+   * Approval gate for risky (confirm-tier) tools. Return true to allow the
+   * action, false to decline. When omitted, confirm-tier tools are blocked
+   * (safe by default) — used for non-interactive surfaces like voice/daemon.
+   */
+  confirm?: (req: ConfirmRequest) => Promise<boolean>;
 }
 
 function getOpenAIClient(): OpenAI {
@@ -153,15 +169,46 @@ export async function runAgent(request: string, opts: RunAgentOptions = {}): Pro
       opts.onStep?.({ tool: toolName, args });
 
       const tool = findTool(toolName);
-      let result: string;
+      let result = "";
       if (!tool) {
         result = `ERROR: unknown tool "${toolName}".`;
       } else {
-        try {
-          result = await tool.handler(args);
-        } catch (err) {
-          result = `ERROR running ${toolName}: ${(err as Error).message}`;
+        let proceed = true;
+        if (tool.risk === "confirm") {
+          const description = describeAction(toolName, args);
+          if (opts.confirm) {
+            try {
+              proceed = await opts.confirm({ tool: toolName, description, args });
+            } catch {
+              proceed = false;
+            }
+            if (!proceed) result = `The user declined to ${description}.`;
+          } else {
+            proceed = false;
+            result =
+              `BLOCKED: "${description}" needs the user's confirmation, which isn't ` +
+              `available here. Tell the user to run this from 'janjak do' in the terminal to approve it.`;
+          }
         }
+        if (proceed) {
+          try {
+            result = await tool.handler(args);
+          } catch (err) {
+            result = `ERROR running ${toolName}: ${(err as Error).message}`;
+          }
+        }
+      }
+
+      // Audit trail: record every tool invocation so 'janjak why' can explain it.
+      try {
+        logDecision({
+          decisionId: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          type: "agent_action",
+          description: `${describeAction(toolName, args)} → ${result.replace(/\s+/g, " ").slice(0, 160)}`,
+          confidence: 1,
+        });
+      } catch {
+        /* audit logging is best-effort */
       }
 
       messages.push({

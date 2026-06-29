@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "app": "bash scripts/build-app.sh",

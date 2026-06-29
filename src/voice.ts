@@ -457,7 +457,13 @@ export async function voiceCommand(options: {
     console.log("  🧠 Thinking...");
     let response: string;
     try {
-      response = await runAgent(transcript, { history });
+      response = await runAgent(transcript, {
+        history,
+        confirm: async ({ description }) => {
+          await speak(`I'd like to ${description}. Should I go ahead?`, voice);
+          return promptYesNo(`  ➜ ${description}? (y/n) `);
+        },
+      });
     } catch (err) {
       console.log("  ❌ AI error:", err instanceof Error ? err.message : "Unknown");
       return false;

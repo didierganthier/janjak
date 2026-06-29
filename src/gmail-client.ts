@@ -230,3 +230,43 @@ export async function createDraft(
     throw err;
   }
 }
+
+/** Send an email immediately. Returns the sent message id. */
+export async function sendEmail(
+  to: string,
+  subject: string,
+  body: string
+): Promise<{ id: string }> {
+  const auth = await getAuthenticatedClient();
+  const gmail = gmailApi({ version: "v1", auth });
+
+  const headerSubject = /[^\x00-\x7F]/.test(subject)
+    ? `=?UTF-8?B?${Buffer.from(subject, "utf-8").toString("base64")}?=`
+    : subject;
+
+  const raw = [
+    `To: ${to}`,
+    `Subject: ${headerSubject}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    body,
+  ].join("\r\n");
+  const encoded = Buffer.from(raw, "utf-8").toString("base64url");
+
+  try {
+    const res = await gmail.users.messages.send({
+      userId: "me",
+      requestBody: { raw: encoded },
+    });
+    return { id: res.data.id ?? "" };
+  } catch (err) {
+    const msg = (err as Error).message ?? "";
+    if (/insufficient|scope|permission|forbidden|403/i.test(msg)) {
+      throw new Error(
+        "Gmail send permission not granted yet. Re-run 'janjak login' to allow Janjak to send email."
+      );
+    }
+    throw err;
+  }
+}
