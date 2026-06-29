@@ -94,20 +94,24 @@ export async function fetchRecentEmails(maxResults = 15): Promise<EmailMessage[]
 }
 
 /**
- * Fetch just the `From` header of recent messages (metadata-only, so it's cheap
- * enough to scan a few hundred). Used to build a frequency-ranked address book.
+ * Fetch a single header value (e.g. From / To) from messages matching a Gmail
+ * query, metadata-only so it scales to a few hundred messages cheaply.
  */
-export async function fetchFromHeaders(maxResults = 200): Promise<string[]> {
+export async function fetchHeaderValues(
+  query: string,
+  headerName: string,
+  maxResults = 200
+): Promise<string[]> {
   const auth = await getAuthenticatedClient();
   const gmail = gmailApi({ version: "v1", auth });
 
-  const froms: string[] = [];
+  const values: string[] = [];
   let pageToken: string | undefined;
-  while (froms.length < maxResults) {
+  while (values.length < maxResults) {
     const listRes = await gmail.users.messages.list({
       userId: "me",
-      maxResults: Math.min(100, maxResults - froms.length),
-      q: "-in:chats",
+      maxResults: Math.min(100, maxResults - values.length),
+      q: query,
       ...(pageToken ? { pageToken } : {}),
     });
     const ids = listRes.data.messages ?? [];
@@ -117,18 +121,35 @@ export async function fetchFromHeaders(maxResults = 200): Promise<string[]> {
       ids.map((m) =>
         m.id
           ? gmail.users.messages
-              .get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] })
-              .then((d) => getHeader(d.data.payload?.headers ?? [], "From"))
+              .get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: [headerName] })
+              .then((d) => getHeader(d.data.payload?.headers ?? [], headerName))
               .catch(() => "")
           : Promise.resolve("")
       )
     );
-    for (const f of batch) if (f) froms.push(f);
+    for (const v of batch) if (v) values.push(v);
 
     pageToken = listRes.data.nextPageToken ?? undefined;
     if (!pageToken) break;
   }
-  return froms;
+  return values;
+}
+
+/** Recent inbound From headers. */
+export async function fetchFromHeaders(maxResults = 200): Promise<string[]> {
+  return fetchHeaderValues("-in:chats -in:sent", "From", maxResults);
+}
+
+/** The authenticated user's own email address (best-effort). */
+export async function getOwnEmail(): Promise<string> {
+  try {
+    const auth = await getAuthenticatedClient();
+    const gmail = gmailApi({ version: "v1", auth });
+    const res = await gmail.users.getProfile({ userId: "me" });
+    return (res.data.emailAddress ?? "").toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 export async function getEmailSummary(): Promise<{

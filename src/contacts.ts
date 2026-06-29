@@ -5,7 +5,7 @@
 // requests so the agent can fill send_email / draft tools with a real
 // address instead of a bare name.
 
-import { searchEmails, fetchFromHeaders } from "./gmail-client.js";
+import { searchEmails, fetchHeaderValues, getOwnEmail } from "./gmail-client.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import { getEntityProfile } from "./graph/query.js";
 
@@ -34,6 +34,18 @@ export function parseAddress(header: string): { name: string; email: string } | 
   const bare = header.match(EMAIL_RE);
   if (bare) return { name: "", email: bare[0].toLowerCase() };
   return null;
+}
+
+/** Parse a header that may contain several comma-separated addresses. */
+export function parseAddressList(header: string): Array<{ name: string; email: string }> {
+  // Split on commas that aren't inside a quoted display name.
+  const parts = header.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+  const out: Array<{ name: string; email: string }> = [];
+  for (const part of parts) {
+    const parsed = parseAddress(part.trim());
+    if (parsed) out.push(parsed);
+  }
+  return out;
 }
 
 function nameMatches(query: string, displayName: string): boolean {
@@ -99,6 +111,31 @@ export async function resolveContact(query: string): Promise<ContactMatch[]> {
     } catch {
       /* gmail search is best-effort */
     }
+
+    // 3) People the user has SENT mail to (strong real-correspondent signal).
+    try {
+      const toHeaders = await fetchHeaderValues(`in:sent to:${trimmed}`, "To", 20);
+      for (const header of toHeaders) {
+        for (const parsed of parseAddressList(header)) {
+          const display = parsed.name || parsed.email;
+          if (!nameMatches(trimmed, display)) continue;
+          const existing = byEmail.get(parsed.email);
+          if (existing) {
+            existing.score += 5;
+            if ((!existing.name || existing.name === trimmed) && parsed.name) existing.name = parsed.name;
+          } else {
+            byEmail.set(parsed.email, {
+              name: parsed.name || trimmed,
+              email: parsed.email,
+              score: 5,
+              source: "email",
+            });
+          }
+        }
+      }
+    } catch {
+      /* sent lookup is best-effort */
+    }
   }
 
   return [...byEmail.values()].sort((a, b) => b.score - a.score);
@@ -108,41 +145,81 @@ export async function resolveContact(query: string): Promise<ContactMatch[]> {
 export interface Contact {
   name: string;
   email: string;
-  /** How many recent messages came from this address. */
+  /** Times you received from this address. */
+  received: number;
+  /** Times you sent to this address (strong "real person" signal). */
+  sent: number;
+  /** Total interactions (received + sent). */
   count: number;
 }
 
 // Addresses that are almost never real people worth listing.
-const NOISE_RE = /(no-?reply|do-?not-?reply|notifications?|mailer|postmaster|bounce|newsletter|support@|info@|updates?@|alerts?@)/i;
+const NOISE_RE = /(no-?reply|do-?not-?reply|notifications?|mailer|postmaster|bounce|newsletter|invitations?@|jobs?@|store-news|marketing@|updates?@|alerts?@|news@|email@|team@|hello@|contact@|support@|info@|account|billing@)/i;
+
+interface ContactAgg extends Contact {
+  score: number;
+}
 
 /**
- * Build a frequency-ranked address book from the user's recent inbound mail.
- * `scan` controls how many recent messages to inspect.
+ * Build an address book that prioritises real people. People you've *sent* mail
+ * to count far more than inbound senders (which are dominated by newsletters),
+ * obvious automated addresses are filtered, and your own address is excluded.
+ * `scan` controls how many recent messages to inspect per mailbox.
  */
-export async function listContacts(limit = 25, scan = 200): Promise<Contact[]> {
+export async function listContacts(limit = 25, scan = 250): Promise<Contact[]> {
   if (!isAuthenticated()) return [];
-  let headers: string[];
+
+  let sentTo: string[] = [];
+  let receivedFrom: string[] = [];
+  let own = "";
   try {
-    headers = await fetchFromHeaders(scan);
+    [sentTo, receivedFrom, own] = await Promise.all([
+      fetchHeaderValues("in:sent", "To", scan),
+      fetchHeaderValues("-in:chats -in:sent", "From", scan),
+      getOwnEmail(),
+    ]);
   } catch {
     return [];
   }
 
-  const byEmail = new Map<string, Contact>();
-  for (const header of headers) {
-    const parsed = parseAddress(header);
-    if (!parsed) continue;
-    if (NOISE_RE.test(parsed.email)) continue;
-    const existing = byEmail.get(parsed.email);
-    if (existing) {
-      existing.count += 1;
-      if ((!existing.name || existing.name === existing.email) && parsed.name) existing.name = parsed.name;
-    } else {
-      byEmail.set(parsed.email, { name: parsed.name || parsed.email, email: parsed.email, count: 1 });
+  const byEmail = new Map<string, ContactAgg>();
+  const bump = (
+    header: string,
+    kind: "sent" | "received",
+    weight: number,
+    multi: boolean
+  ): void => {
+    const entries = multi ? parseAddressList(header) : (parseAddress(header) ? [parseAddress(header)!] : []);
+    for (const parsed of entries) {
+      if (parsed.email === own) continue;
+      if (NOISE_RE.test(parsed.email)) continue;
+      const existing = byEmail.get(parsed.email);
+      if (existing) {
+        existing.score += weight;
+        existing[kind] += 1;
+        existing.count += 1;
+        if ((!existing.name || existing.name === existing.email) && parsed.name) existing.name = parsed.name;
+      } else {
+        byEmail.set(parsed.email, {
+          name: parsed.name || parsed.email,
+          email: parsed.email,
+          received: kind === "received" ? 1 : 0,
+          sent: kind === "sent" ? 1 : 0,
+          count: 1,
+          score: weight,
+        });
+      }
     }
-  }
+  };
 
-  return [...byEmail.values()].sort((a, b) => b.count - a.count).slice(0, limit);
+  // Sent recipients are the strongest signal of a real correspondent.
+  for (const h of sentTo) bump(h, "sent", 6, true);
+  for (const h of receivedFrom) bump(h, "received", 1, false);
+
+  return [...byEmail.values()]
+    .sort((a, b) => b.score - a.score || b.count - a.count)
+    .slice(0, limit)
+    .map(({ score: _score, ...c }) => c);
 }
 
 /** Render a contact list for display. */
@@ -152,7 +229,11 @@ export function formatContacts(contacts: Contact[]): string {
   }
   const lines = contacts.map((c, i) => {
     const label = c.name && c.name !== c.email ? `${c.name} <${c.email}>` : c.email;
-    return `  ${String(i + 1).padStart(2, " ")}. ${label}  (${c.count})`;
+    const parts: string[] = [];
+    if (c.sent > 0) parts.push(`${c.sent} sent`);
+    if (c.received > 0) parts.push(`${c.received} received`);
+    const tag = parts.length ? `  (${parts.join(", ")})` : "";
+    return `  ${String(i + 1).padStart(2, " ")}. ${label}${tag}`;
   });
-  return `📇 Contacts (most frequent first)\n${lines.join("\n")}`;
+  return `📇 Contacts (people you correspond with first)\n${lines.join("\n")}`;
 }

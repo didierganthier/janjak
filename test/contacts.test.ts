@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { parseAddress, looksLikeEmail, resolveContact } from "../src/contacts.js";
+import { parseAddressList } from "../src/contacts.js";
 
 test("looksLikeEmail", () => {
   assert.ok(looksLikeEmail("marc@example.com"));
@@ -23,4 +24,13 @@ test("resolveContact returns the email verbatim when given one", async () => {
   assert.equal(matches.length, 1);
   assert.equal(matches[0]!.email, "marc@example.com");
   assert.equal(matches[0]!.source, "email");
+});
+
+test("parseAddressList splits multiple recipients, respecting quoted names", () => {
+  const list = parseAddressList('"Doe, Marc" <marc@x.com>, jane@y.com, Bob <bob@z.org>');
+  assert.deepEqual(
+    list.map((a) => a.email),
+    ["marc@x.com", "jane@y.com", "bob@z.org"]
+  );
+  assert.equal(list[0]!.name, "Doe, Marc");
 });
