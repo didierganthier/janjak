@@ -19,6 +19,13 @@ import { isUrlOpen } from "./browser.js";
 import { recordFeedback } from "./learning/feedback.js";
 import { logDecision } from "./learning/explain.js";
 import { getActionTierOverride } from "./learning/adapt.js";
+import { runAgent } from "./agent/agent.js";
+
+// Actions whose `action` string starts with this prefix are executed by the
+// agentic brain (runAgent) rather than the simple ACTIONS registry. Only the
+// "auto" tier runs them autonomously, and always without a confirm callback —
+// so any risky (confirm-tier) tool the agent reaches for is auto-blocked.
+const AGENT_PREFIX = "agent:";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -185,12 +192,82 @@ function openMeetingLink(url: string): string {
 }
 
 /**
+ * Run an agent-backed proactive action (e.g. meeting prep, end-of-day plan).
+ * These use the full agentic brain but only at the "auto" tier and without a
+ * confirm callback, so any risky (confirm-tier) tool is blocked by default —
+ * the agent can read, summarize and save notes, but never draft/send/write.
+ * A persistent per-alert marker guarantees each one runs at most once.
+ */
+async function executeAgentAction(alert: ProactiveAlert): Promise<boolean> {
+  const tier = alert.tier ?? "confirm";
+  // Only safe, read-only auto-tier agent actions run autonomously in v1.
+  if (tier !== "auto") return false;
+  if (!isTierEnabled("auto")) return false;
+
+  const request = alert.action!.slice(AGENT_PREFIX.length).trim();
+  if (!request) return false;
+
+  const doneKey = `agent_action_done:${alert.id}`;
+  if (getState(doneKey)) return true; // already handled
+  setState(doneKey, String(Date.now())); // optimistic dedupe (prevents overlap)
+
+  const label = alert.actionLabel ?? "Proactive briefing";
+  try {
+    // No confirm callback → confirm-tier tools (write/draft/send) auto-block.
+    const answer = await runAgent(request);
+    logAction({
+      timestamp: Date.now(),
+      alertId: alert.id,
+      alertTitle: alert.title,
+      actionLabel: label,
+      tier: "auto",
+      result: answer.slice(0, 200),
+      success: true,
+    });
+    recordFeedback({
+      actionType: "autonomy",
+      actionId: label,
+      outcome: "accepted",
+      context: { alertId: alert.id, category: alert.category, agent: true },
+    });
+    logDecision({
+      decisionId: `autonomy-agent-${alert.id}`,
+      type: "autonomy",
+      description: `Proactive: ${alert.title}`,
+      evidence: { signals: [`category:${alert.category}`, "agent"], result: answer.slice(0, 160) },
+      confidence: 0.7,
+    });
+    if (notificationsAvailable()) {
+      sendNotification(answer.slice(0, 180), "Janjak", label);
+    }
+    return true;
+  } catch {
+    setState(doneKey, ""); // clear marker so it can retry on a later tick
+    logAction({
+      timestamp: Date.now(),
+      alertId: alert.id,
+      alertTitle: alert.title,
+      actionLabel: label,
+      tier: "auto",
+      result: "agent action failed",
+      success: false,
+    });
+    return false;
+  }
+}
+
+/**
  * Process a proactive alert and potentially execute its action autonomously.
  * Returns true if the action was handled (auto-executed or scheduled for confirm).
  */
 export async function executeAutonomously(alert: ProactiveAlert): Promise<boolean> {
   if (!isAutonomyEnabled()) return false;
   if (!alert.action) return false;
+
+  // Agent-backed proactive actions (meeting prep, EOD planning, …).
+  if (alert.action.startsWith(AGENT_PREFIX)) {
+    return executeAgentAction(alert);
+  }
 
   const action = findAction(alert.action);
   if (!action) return false;

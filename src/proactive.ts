@@ -55,6 +55,7 @@ export interface ProactiveAlert {
   actionLabel?: string;  // Human label (e.g., "Start Focus Mode")
   timestamp: number;
   expiresAt?: number;    // Auto-dismiss after this time
+  tier?: "auto" | "confirm" | "suggest"; // Autonomy tier for agent-backed actions
 }
 
 // ─── Alert State (deduplication + cooldowns) ────────────────────
@@ -100,6 +101,34 @@ async function checkCalendar(): Promise<ProactiveAlert[]> {
 
     for (const event of upcoming) {
       if (event.status !== "upcoming" || event.minutesUntil <= 0) continue;
+
+      // Meeting prep (agent-backed, runs once per event ~10-14m before start).
+      // Gated by autonomy: if autonomy is OFF it simply shows as a suggestion.
+      if (event.minutesUntil <= 14 && event.minutesUntil > 9) {
+        const prepKey = `mtgprep_emitted_${event.id}`;
+        if (!getState(prepKey)) {
+          setState(prepKey, "1");
+          alerts.push({
+            id: `mtgprep-${event.id}`,
+            category: "meeting",
+            priority: "low",
+            title: `🧠 Prepping you for "${event.title}"`,
+            message: `Gathering context for your meeting in ${event.minutesUntil}m…`,
+            action:
+              `agent:Help me prepare for my upcoming meeting "${event.title}" ` +
+              `starting in about ${event.minutesUntil} minutes. ` +
+              `Search my email (search_email) for the most recent relevant thread, ` +
+              `and check related notes (recall_memory). Then write a concise 4-bullet ` +
+              `prep brief: key context, what to know, open questions, and suggested ` +
+              `talking points. Save the brief as a note (save_note). ` +
+              `Do not draft or send any email.`,
+            actionLabel: "Meeting prep",
+            tier: "auto",
+            timestamp: Date.now(),
+            expiresAt: event.start.getTime(),
+          });
+        }
+      }
 
       // 15-minute warning
       if (event.minutesUntil <= 15 && event.minutesUntil > 10) {
@@ -591,6 +620,30 @@ function checkRelationships(): ProactiveAlert[] {
 // ─── Main Engine ────────────────────────────────────────────────
 
 /** Run all checks and return prioritized alerts (highest first). */
+/** End-of-day planner: after 17:00 local, once per day, draft tomorrow's plan. */
+function checkEndOfDay(): ProactiveAlert[] {
+  const now = new Date();
+  if (now.getHours() < 17) return [];
+  const today = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
+  if (getState("eodplan_emitted") === today) return [];
+  setState("eodplan_emitted", today);
+  return [{
+    id: `eodplan-${today}`,
+    category: "task",
+    priority: "low",
+    title: "🌙 Planning your tomorrow",
+    message: "Drafting a plan from your open tasks and calendar…",
+    action:
+      "agent:Plan my day for tomorrow. Review my open tasks (list_tasks) and " +
+      "calendar (get_calendar), then produce a short, prioritized plan with at " +
+      "most 6 items. Save it as a note (save_note) titled \"Tomorrow's plan\". " +
+      "Do not draft or send any email.",
+    actionLabel: "Plan tomorrow",
+    tier: "auto",
+    timestamp: Date.now(),
+  }];
+}
+
 export async function getProactiveAlerts(): Promise<ProactiveAlert[]> {
   const allAlerts: ProactiveAlert[] = [];
 
@@ -603,6 +656,7 @@ export async function getProactiveAlerts(): Promise<ProactiveAlert[]> {
   allAlerts.push(...checkStreak());
   allAlerts.push(...checkGoals());
   allAlerts.push(...checkRelationships());
+  allAlerts.push(...checkEndOfDay());
 
   // Run async checks
   const calendarAlerts = await checkCalendar();
