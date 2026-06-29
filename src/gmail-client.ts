@@ -93,6 +93,44 @@ export async function fetchRecentEmails(maxResults = 15): Promise<EmailMessage[]
   return emails;
 }
 
+/**
+ * Fetch just the `From` header of recent messages (metadata-only, so it's cheap
+ * enough to scan a few hundred). Used to build a frequency-ranked address book.
+ */
+export async function fetchFromHeaders(maxResults = 200): Promise<string[]> {
+  const auth = await getAuthenticatedClient();
+  const gmail = gmailApi({ version: "v1", auth });
+
+  const froms: string[] = [];
+  let pageToken: string | undefined;
+  while (froms.length < maxResults) {
+    const listRes = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: Math.min(100, maxResults - froms.length),
+      q: "-in:chats",
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const ids = listRes.data.messages ?? [];
+    if (ids.length === 0) break;
+
+    const batch = await Promise.all(
+      ids.map((m) =>
+        m.id
+          ? gmail.users.messages
+              .get({ userId: "me", id: m.id, format: "metadata", metadataHeaders: ["From"] })
+              .then((d) => getHeader(d.data.payload?.headers ?? [], "From"))
+              .catch(() => "")
+          : Promise.resolve("")
+      )
+    );
+    for (const f of batch) if (f) froms.push(f);
+
+    pageToken = listRes.data.nextPageToken ?? undefined;
+    if (!pageToken) break;
+  }
+  return froms;
+}
+
 export async function getEmailSummary(): Promise<{
   unreadCount: number;
   emails: EmailMessage[];

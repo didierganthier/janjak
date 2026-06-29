@@ -22,6 +22,7 @@ import { getCurrentTrack, pauseMusic, resumeMusic } from "./music.js";
 import { closeDb, setState, getState, resetTrackedData } from "./db.js";
 import { runOAuthFlow, isAuthenticated } from "./gmail-auth.js";
 import { searchEmails, getEmailById } from "./gmail-client.js";
+import { listContacts, formatContacts } from "./contacts.js";
 import { processInbox, formatInboxReport, formatAllTasks, updateTaskStatus } from "./tasks.js";
 import { formatInsights } from "./memory.js";
 import { getTodayScore, getWeeklyScores, formatWeeklyReport, getAIWeeklySummary } from "./score.js";
@@ -740,6 +741,21 @@ program
   });
 
 program
+  .command("contacts")
+  .description("List the people you email with, most frequent first (from your Gmail).")
+  .option("-n, --limit <n>", "How many contacts to show", "25")
+  .action(async (opts: { limit: string }) => {
+    if (!isAuthenticated()) {
+      console.error("\n  Gmail isn't connected. Run 'janjak login' first.\n");
+      process.exit(1);
+    }
+    const limit = Math.max(1, parseInt(opts.limit, 10) || 25);
+    console.log("\n  Reading your contacts…");
+    const contacts = await listContacts(limit);
+    console.log(`\n${formatContacts(contacts)}\n`);
+  });
+
+program
   .command("who <name...>")
   .description("Show Janjak's profile for a person, project, topic, org, or place.")
   .option("--sync", "Extract entities from recent memory before querying")
@@ -1272,6 +1288,7 @@ program
       recall_memory: "recalling what I know",
       who_is: "looking that up",
       resolve_contact: "finding the contact",
+      list_contacts: "listing your contacts",
       generate_document: "writing the document",
       read_document: "reading the document",
       web_search: "searching the web",

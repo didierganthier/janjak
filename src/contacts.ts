@@ -5,7 +5,7 @@
 // requests so the agent can fill send_email / draft tools with a real
 // address instead of a bare name.
 
-import { searchEmails } from "./gmail-client.js";
+import { searchEmails, fetchFromHeaders } from "./gmail-client.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import { getEntityProfile } from "./graph/query.js";
 
@@ -102,4 +102,57 @@ export async function resolveContact(query: string): Promise<ContactMatch[]> {
   }
 
   return [...byEmail.values()].sort((a, b) => b.score - a.score);
+}
+
+/** A person in the derived address book. */
+export interface Contact {
+  name: string;
+  email: string;
+  /** How many recent messages came from this address. */
+  count: number;
+}
+
+// Addresses that are almost never real people worth listing.
+const NOISE_RE = /(no-?reply|do-?not-?reply|notifications?|mailer|postmaster|bounce|newsletter|support@|info@|updates?@|alerts?@)/i;
+
+/**
+ * Build a frequency-ranked address book from the user's recent inbound mail.
+ * `scan` controls how many recent messages to inspect.
+ */
+export async function listContacts(limit = 25, scan = 200): Promise<Contact[]> {
+  if (!isAuthenticated()) return [];
+  let headers: string[];
+  try {
+    headers = await fetchFromHeaders(scan);
+  } catch {
+    return [];
+  }
+
+  const byEmail = new Map<string, Contact>();
+  for (const header of headers) {
+    const parsed = parseAddress(header);
+    if (!parsed) continue;
+    if (NOISE_RE.test(parsed.email)) continue;
+    const existing = byEmail.get(parsed.email);
+    if (existing) {
+      existing.count += 1;
+      if ((!existing.name || existing.name === existing.email) && parsed.name) existing.name = parsed.name;
+    } else {
+      byEmail.set(parsed.email, { name: parsed.name || parsed.email, email: parsed.email, count: 1 });
+    }
+  }
+
+  return [...byEmail.values()].sort((a, b) => b.count - a.count).slice(0, limit);
+}
+
+/** Render a contact list for display. */
+export function formatContacts(contacts: Contact[]): string {
+  if (contacts.length === 0) {
+    return "No contacts found. Connect Gmail with 'janjak login' first.";
+  }
+  const lines = contacts.map((c, i) => {
+    const label = c.name && c.name !== c.email ? `${c.name} <${c.email}>` : c.email;
+    return `  ${String(i + 1).padStart(2, " ")}. ${label}  (${c.count})`;
+  });
+  return `📇 Contacts (most frequent first)\n${lines.join("\n")}`;
 }

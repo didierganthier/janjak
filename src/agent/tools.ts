@@ -23,7 +23,7 @@ import { isAuthenticated } from "../gmail-auth.js";
 import { searchEmails, createDraft, sendEmail } from "../gmail-client.js";
 import { getAllWorkflows, runWorkflowById, isWorkflowsEnabled } from "../workflows.js";
 import { openInEmailApp } from "../reply.js";
-import { resolveContact } from "../contacts.js";
+import { resolveContact, listContacts } from "../contacts.js";
 import { capture } from "../memory/recall.js";
 import { webSearch } from "./websearch.js";
 import { pauseMusic, resumeMusic, getCurrentTrack, playPlaylist } from "../music.js";
@@ -501,6 +501,33 @@ const tools: AgentTool[] = [
       return matches.length === 1
         ? `Resolved "${name}" to ${top}.`
         : `Possible matches for "${name}" (most likely first): ${top}. Use the first unless the user meant another.`;
+    },
+  },
+
+  {
+    schema: {
+      type: "function",
+      function: {
+        name: "list_contacts",
+        description:
+          "List the user's contacts (people they email with), most frequent first, derived from recent Gmail. Use when the user asks 'who are my contacts', 'list my contacts', or wants to pick a recipient.",
+        parameters: {
+          type: "object",
+          properties: {
+            limit: { type: "number", description: "How many contacts to return (default 15)." },
+          },
+        },
+      },
+    },
+    handler: async (args) => {
+      const limit = num(args, "limit") ?? 15;
+      const contacts = await listContacts(limit);
+      if (contacts.length === 0) {
+        return "No contacts found. The user may need to connect Gmail with 'janjak login'.";
+      }
+      return contacts
+        .map((c) => (c.name && c.name !== c.email ? `${c.name} <${c.email}>` : c.email))
+        .join("; ");
     },
   },
 
