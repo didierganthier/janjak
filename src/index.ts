@@ -1271,6 +1271,7 @@ program
       search_email: "searching your email",
       recall_memory: "recalling what I know",
       who_is: "looking that up",
+      resolve_contact: "finding the contact",
       generate_document: "writing the document",
       read_document: "reading the document",
       web_search: "searching the web",

@@ -23,6 +23,7 @@ import { isAuthenticated } from "../gmail-auth.js";
 import { searchEmails, createDraft, sendEmail } from "../gmail-client.js";
 import { getAllWorkflows, runWorkflowById, isWorkflowsEnabled } from "../workflows.js";
 import { openInEmailApp } from "../reply.js";
+import { resolveContact } from "../contacts.js";
 import { capture } from "../memory/recall.js";
 import { webSearch } from "./websearch.js";
 import { pauseMusic, resumeMusic, getCurrentTrack, playPlaylist } from "../music.js";
@@ -471,13 +472,46 @@ const tools: AgentTool[] = [
   },
 
   {
+    schema: {
+      type: "function",
+      function: {
+        name: "resolve_contact",
+        description:
+          "Look up a person's email address by name, using the user's Gmail history and known contacts. Call this BEFORE draft_email/create_gmail_draft/send_email whenever you only have a name (not an email). Returns the best-matching addresses.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "The person's name to resolve (e.g. 'Marc', 'Marie Pierre')." },
+          },
+          required: ["name"],
+        },
+      },
+    },
+    handler: async (args) => {
+      const name = str(args, "name");
+      if (!name) return "ERROR: missing 'name'.";
+      const matches = await resolveContact(name);
+      if (matches.length === 0) {
+        return `No email address found for "${name}". Ask the user for the address.`;
+      }
+      const top = matches
+        .slice(0, 5)
+        .map((m) => (m.name && m.name !== m.email ? `${m.name} <${m.email}>` : m.email))
+        .join("; ");
+      return matches.length === 1
+        ? `Resolved "${name}" to ${top}.`
+        : `Possible matches for "${name}" (most likely first): ${top}. Use the first unless the user meant another.`;
+    },
+  },
+
+  {
     risk: "confirm",
     schema: {
       type: "function",
       function: {
         name: "draft_email",
         description:
-          "Compose an email and open it (pre-filled) in the user's mail app for review. This does NOT auto-send — the user reviews and hits send. Use to draft replies or new messages.",
+          "Compose an email and open it (pre-filled) in the user's mail app for review. This does NOT auto-send — the user reviews and hits send. Use to draft replies or new messages. If you only have a name, call resolve_contact first.",
         parameters: {
           type: "object",
           properties: {
@@ -510,7 +544,7 @@ const tools: AgentTool[] = [
       function: {
         name: "create_gmail_draft",
         description:
-          "Save an email as a Gmail draft (server-side, appears in the user's Gmail Drafts on every device). Does NOT send — the user reviews and sends from Gmail. Prefer this over draft_email when the user wants the draft saved in Gmail.",
+          "Save an email as a Gmail draft (server-side, appears in the user's Gmail Drafts on every device). Does NOT send — the user reviews and sends from Gmail. Prefer this over draft_email when the user wants the draft saved in Gmail. If you only have a name, call resolve_contact first.",
         parameters: {
           type: "object",
           properties: {
@@ -544,7 +578,7 @@ const tools: AgentTool[] = [
       function: {
         name: "send_email",
         description:
-          "Send an email immediately from the user's Gmail. This delivers the message right away — only use when the user clearly wants to SEND (not just draft). The recipient must be a real email address; resolve names with who_is first if needed.",
+          "Send an email immediately from the user's Gmail. This delivers the message right away — only use when the user clearly wants to SEND (not just draft). The recipient must be a real email address; resolve names with resolve_contact first if needed.",
         parameters: {
           type: "object",
           properties: {
