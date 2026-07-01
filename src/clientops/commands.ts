@@ -41,6 +41,14 @@ import {
   setFollowupStatus,
 } from "./followups.js";
 import { daysUntil, formatMoney, isOverdue, parseDueDate } from "./util.js";
+import { buildProjectContext } from "./context-builder.js";
+import {
+  draftPaymentFollowup,
+  detectRisks,
+  prepBrief,
+  summarizeProject,
+  type FollowupTone,
+} from "./ai.js";
 import {
   DELIVERABLE_STATUSES,
   NOTE_TYPES,
@@ -64,6 +72,13 @@ function die(msg: string): never {
 
 function join(parts: string[]): string {
   return parts.join(" ").trim();
+}
+
+function indent(text: string, pad = "   "): string {
+  return text
+    .split("\n")
+    .map((line) => (line ? pad + line : line))
+    .join("\n");
 }
 
 function clientLabel(c: Client): string {
@@ -99,6 +114,7 @@ export function registerClientOpsCommands(program: Command): void {
   registerDeliverable(program);
   registerPayment(program);
   registerFollowup(program);
+  registerAI(program);
 }
 
 // ── clients ─────────────────────────────────────────────────────
@@ -287,9 +303,21 @@ function registerProject(program: Command): void {
   project
     .command("summary <name...>")
     .description("Structured project summary (status, scope, payments, follow-ups).")
-    .action((nameParts: string[]) => {
+    .option("--ai", "Generate an AI status summary (requires OPENAI_API_KEY).")
+    .action(async (nameParts: string[], opts: { ai?: boolean }) => {
       const p = requireProject(join(nameParts));
       printProjectSummary(p);
+      if (opts.ai) {
+        const ctx = buildProjectContext(p.id);
+        if (!ctx) return;
+        try {
+          console.log("   🧠 thinking…\r");
+          const summary = await summarizeProject(ctx);
+          console.log(`\n🧠 AI summary\n\n${indent(summary)}\n`);
+        } catch (err) {
+          die((err as Error).message);
+        }
+      }
     });
 
   project
@@ -507,6 +535,29 @@ function registerPayment(program: Command): void {
       if (!updated) die(`Payment #${id} not found.`);
       console.log(`\n✅ Payment #${id} marked paid (${formatMoney(updated.amount, updated.currency)}).\n`);
     });
+
+  payment
+    .command("followup <id>")
+    .description("Draft a payment follow-up message (AI — never sends).")
+    .option("--tone <tone>", "friendly | professional | firm", "friendly")
+    .action(async (id: string, opts: { tone: string }) => {
+      const pay = getPaymentById(parseInt(id, 10));
+      if (!pay) die(`Payment #${id} not found.`);
+      if (pay.projectId == null) die(`Payment #${id} isn't linked to a project.`);
+      const ctx = buildProjectContext(pay.projectId);
+      if (!ctx) die(`Project for payment #${id} not found.`);
+      const tone = validateFollowupTone(opts.tone);
+      try {
+        const msg = await draftPaymentFollowup(pay, ctx, tone);
+        console.log(
+          `\n✉️  Payment follow-up draft — ${formatMoney(pay.amount, pay.currency)} · ${ctx.project.name}\n`
+        );
+        console.log(indent(msg));
+        console.log("\n   (draft only — review and send yourself)\n");
+      } catch (err) {
+        die((err as Error).message);
+      }
+    });
 }
 
 function printPayments(heading: string, payments: ReturnType<typeof listPayments>): void {
@@ -627,4 +678,55 @@ function validateNoteType(value: string): NoteType {
     die(`Invalid note type. Use one of: ${NOTE_TYPES.join(", ")}`);
   }
   return value as NoteType;
+}
+
+const FOLLOWUP_TONES: FollowupTone[] = ["friendly", "professional", "firm"];
+function validateFollowupTone(value: string): FollowupTone {
+  if (!FOLLOWUP_TONES.includes(value as FollowupTone)) {
+    die(`Invalid tone. Use one of: ${FOLLOWUP_TONES.join(", ")}`);
+  }
+  return value as FollowupTone;
+}
+
+// ── AI commands (Phase 2) ───────────────────────────────────────
+function registerAI(program: Command): void {
+  program
+    .command("prep <name...>")
+    .description("AI meeting-prep brief for a client project.")
+    .action(async (nameParts: string[]) => {
+      const p = requireProject(join(nameParts));
+      const ctx = buildProjectContext(p.id);
+      if (!ctx) die(`Could not build context for ${p.name}.`);
+      try {
+        const brief = await prepBrief(ctx);
+        console.log(`\n📋 Meeting prep — ${p.name}\n`);
+        console.log(indent(brief));
+        console.log();
+      } catch (err) {
+        die((err as Error).message);
+      }
+    });
+
+  program
+    .command("risks")
+    .description("AI risk scan across open client projects.")
+    .option("--all", "Include closed projects")
+    .action(async (opts: { all?: boolean }) => {
+      const projects = listProjects({ includeClosed: opts.all });
+      if (projects.length === 0) {
+        console.log("\n  No open projects to assess.\n");
+        return;
+      }
+      const contexts = projects
+        .map((p) => buildProjectContext(p.id))
+        .filter((c): c is NonNullable<typeof c> => c != null);
+      try {
+        const report = await detectRisks(contexts);
+        console.log(`\n⚠️  Portfolio risk scan (${contexts.length} project${contexts.length === 1 ? "" : "s"})\n`);
+        console.log(indent(report));
+        console.log();
+      } catch (err) {
+        die((err as Error).message);
+      }
+    });
 }

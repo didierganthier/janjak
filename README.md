@@ -179,6 +179,7 @@ Track freelance/agency work — clients, projects, deliverables, payments, and f
 | `janjak project add <name>` | Add a project (`--client`, `--budget`, `--currency`, `--priority`, `--status`, `--start`, `--end`). |
 | `janjak project list` | List open projects (`--all`, `--client`). |
 | `janjak project summary <name>` | Deliverables, payments, follow-ups & recent notes at a glance. |
+| `janjak project summary <name> --ai` | AI status summary (headline, progress, blockers, next action). |
 | `janjak project status <name> <status>` | Move a project through its lifecycle. |
 | `janjak project next <name> "<text>"` | Set the next action (`--due`). |
 | `janjak deliverable add <project> "<title>"` | Add a deliverable (`--due`, `--priority`). |
@@ -188,6 +189,9 @@ Track freelance/agency work — clients, projects, deliverables, payments, and f
 | `janjak payment list` | List payments (`--status`, `--client`). |
 | `janjak payment overdue` | Overdue + outstanding payments. |
 | `janjak payment paid <id>` | Mark a payment paid. |
+| `janjak payment followup <id>` | AI-draft a payment follow-up message (`--tone`; never sends). |
+| `janjak prep <project>` | AI meeting-prep brief (talking points, decisions, watch-outs). |
+| `janjak risks` | AI risk scan across open projects (`--all`). |
 | `janjak followups` | All open follow-ups across clients & projects (`--all`). |
 | `janjak followup add <who> "<title>"` | Add a follow-up for a client or project (`--due`, `--channel`). |
 | `janjak followup done <id>` | Resolve a follow-up. |
@@ -302,7 +306,9 @@ clientops/          # Client operations (clients, projects, payments)
 ├── payments.ts     # Payment CRUD + outstanding/overdue queries
 ├── notes.ts        # Project/client notes
 ├── followups.ts    # Follow-up CRUD
-└── commands.ts     # CLI verbs (client/project/deliverable/payment/followup)
+├── context-builder.ts # Assemble a project's full picture for AI prompts
+├── ai.ts           # AI: status summary, meeting prep, payment follow-up, risk scan
+└── commands.ts     # CLI verbs (client/project/deliverable/payment/followup/prep/risks)
 web/
 ├── index.html      # Web dashboard (live charts + panels)
 └── setup.html      # Interactive setup wizard UI
@@ -640,6 +646,7 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 - [x] **Super Brain L5 — Synthesis** (daily/weekly consolidation, memory tiers, `review`)
 - [x] **Privacy Controls** (`forget --entity`, `export`, `--no-embed`)
 - [x] **Client Operations** (clients, projects, deliverables, payments, follow-ups — CLI)
+- [x] **ClientOps AI** (project summaries, meeting prep, payment follow-up drafts, risk scan)
 - [ ] Multi-device Context (iPhone/Watch location + motion signals)
 - [ ] Plugin System (`~/.janjak/plugins/` for community extensions)
 - [ ] Agent Mode (chain API calls + code analysis autonomously)
