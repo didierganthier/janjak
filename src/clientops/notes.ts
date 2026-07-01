@@ -100,6 +100,15 @@ export function listNotes(opts: ListNotesOptions = {}): ProjectNote[] {
   return rows.map(mapRow);
 }
 
+/** Whether a note already exists for a given external source reference. */
+export function noteExistsBySourceRef(sourceRef: string): boolean {
+  ensureClientOpsSchema();
+  const row = getDb()
+    .prepare("SELECT 1 FROM project_notes WHERE source_ref = ? LIMIT 1")
+    .get(sourceRef) as { 1: number } | undefined;
+  return row != null;
+}
+
 export function deleteNote(id: number): boolean {
   ensureClientOpsSchema();
   const result = getDb().prepare("DELETE FROM project_notes WHERE id = ?").run(id);

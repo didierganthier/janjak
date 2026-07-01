@@ -83,6 +83,17 @@ export function findClient(query: string): Client | null {
   return partial ? mapRow(partial) : null;
 }
 
+/** Resolve a client by exact email address (case-insensitive). */
+export function findClientByEmail(email: string): Client | null {
+  ensureClientOpsSchema();
+  const addr = email.trim();
+  if (!addr) return null;
+  const row = getDb()
+    .prepare("SELECT * FROM clients WHERE email = ? COLLATE NOCASE ORDER BY id LIMIT 1")
+    .get(addr) as ClientRow | undefined;
+  return row ? mapRow(row) : null;
+}
+
 export function listClients(opts: { includeArchived?: boolean } = {}): Client[] {
   ensureClientOpsSchema();
   const d = getDb();

@@ -157,6 +157,7 @@ You own every byte. Everything is stored locally in SQLite at `~/.janjak/`; only
 |---------|-------------|
 | `janjak login` | Authenticate with Gmail + Google Calendar (one-time). |
 | `janjak inbox` | Scan emails → AI extracts tasks → briefing. |
+| `janjak inbox --clientops` | Also link emails from known clients into ClientOps notes. |
 | `janjak tasks` | Show all pending tasks. |
 | `janjak start <id>` | Mark a task as in-progress. |
 | `janjak done <id>` | Mark a task as done. |
@@ -227,6 +228,7 @@ A live **ClientOps view** is also built into the web dashboard — run `janjak w
 | `janjak voice --voice shimmer` | Choose TTS voice (alloy/echo/fable/onyx/nova/shimmer). |
 | `janjak morning` | AI morning briefing (calendar, inbox, tasks, plan). |
 | `janjak morning --ai` | Briefing with AI-generated daily plan. |
+| `janjak morning --clientops` | Add a ClientOps section (payments, follow-ups, at-risk projects). |
 | `janjak web` | Launch the web dashboard. |
 | `janjak menubar` | Launch macOS menu bar app. |
 | `janjak setup` | Interactive setup wizard (guided configuration). |
@@ -310,6 +312,7 @@ clientops/          # Client operations (clients, projects, payments)
 ├── followups.ts    # Follow-up CRUD
 ├── context-builder.ts # Assemble a project's full picture for AI prompts
 ├── ai.ts           # AI: status summary, meeting prep, payment follow-up, risk scan
+├── linker.ts       # Link Gmail emails to clients/projects + morning section
 └── commands.ts     # CLI verbs (client/project/deliverable/payment/followup/prep/risks)
 web/
 ├── index.html      # Web dashboard (live charts + panels)
@@ -650,6 +653,7 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 - [x] **Privacy Controls** (`forget --entity`, `export`, `--no-embed`)
 - [x] **Client Operations** (clients, projects, deliverables, payments, follow-ups — CLI)
 - [x] **ClientOps AI** (project summaries, meeting prep, payment follow-up drafts, risk scan)
+- [x] **ClientOps email linking** (`inbox --clientops`, `morning --clientops`)
 - [ ] Multi-device Context (iPhone/Watch location + motion signals)
 - [ ] Plugin System (`~/.janjak/plugins/` for community extensions)
 - [ ] Agent Mode (chain API calls + code analysis autonomously)

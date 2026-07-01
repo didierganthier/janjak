@@ -268,10 +268,10 @@ ${personalBlock ? "\n" + personalBlock : ""}
 
 // ─── Main Briefing ──────────────────────────────────────────────
 
-export async function generateMorningBriefing(options: { ai?: boolean } = {}): Promise<string> {
+export async function generateMorningBriefing(options: { ai?: boolean; clientops?: boolean } = {}): Promise<string> {
   const name = getUserName();
   const greeting = timeGreeting();
-  const { ai = true } = options;
+  const { ai = true, clientops = false } = options;
 
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-US", {
@@ -325,6 +325,14 @@ export async function generateMorningBriefing(options: { ai?: boolean } = {}): P
   sections.push("\n📊 Focus");
   sections.push("─".repeat(30));
   sections.push(scores);
+
+  // ClientOps (opt-in)
+  if (clientops) {
+    const { getClientOpsMorningSection } = await import("./clientops/linker.js");
+    sections.push("\n🗂️  ClientOps");
+    sections.push("─".repeat(30));
+    sections.push(getClientOpsMorningSection());
+  }
 
   // AI Plan
   if (ai) {

@@ -1379,7 +1379,8 @@ program
 program
   .command("inbox")
   .description("Scan emails → extract tasks → AI briefing.")
-  .action(async () => {
+  .option("--clientops", "Also link emails from known clients into ClientOps notes.")
+  .action(async (opts: { clientops?: boolean }) => {
     if (!isAuthenticated()) {
       console.log("🔐 Not logged in. Run: janjak login");
       return;
@@ -1391,6 +1392,14 @@ program
       const { summary, newTasks, totalEmails } = await processInbox();
       const report = formatInboxReport(summary, newTasks, totalEmails);
       console.log(report);
+
+      if (opts.clientops) {
+        const { scanClientOpsInbox, formatClientOpsInbox } = await import("./clientops/linker.js");
+        const linked = await scanClientOpsInbox(15);
+        console.log("\n🗂️  ClientOps");
+        console.log("─".repeat(30));
+        console.log(formatClientOpsInbox(linked));
+      }
     } catch (err) {
       console.error("Error scanning inbox:", err instanceof Error ? err.message : err);
     }
@@ -1521,9 +1530,10 @@ program
   .command("morning")
   .description("Your personalized morning briefing: calendar, emails, tasks, scores, and AI plan.")
   .option("--no-ai", "Skip the AI-generated plan")
+  .option("--clientops", "Include a ClientOps section (payments, follow-ups, at-risk projects).")
   .action(async (opts) => {
     console.log("\n☕ Brewing your morning briefing...\n");
-    const briefing = await generateMorningBriefing({ ai: opts.ai });
+    const briefing = await generateMorningBriefing({ ai: opts.ai, clientops: opts.clientops });
     console.log(briefing);
   });
 
