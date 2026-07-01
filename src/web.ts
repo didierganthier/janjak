@@ -21,6 +21,13 @@ import { getGitHubDashSummary, isGitHubConfigured } from "./github.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import type { TaskStatus } from "./types.js";
 
+import { listClients } from "./clientops/clients.js";
+import { listProjects, getProjectById } from "./clientops/projects.js";
+import { listDeliverables } from "./clientops/deliverables.js";
+import { listPayments, listOutstandingPayments } from "./clientops/payments.js";
+import { listFollowups } from "./clientops/followups.js";
+import { formatMoney, isOverdue, daysUntil } from "./clientops/util.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = 3547;
 
@@ -110,6 +117,93 @@ async function getFullState() {
   } catch { /* */ }
 
   return result;
+}
+
+// ─── ClientOps snapshot ─────────────────────────────────────────
+
+function clientOpsSnapshot() {
+  const clients = listClients();
+  const projects = listProjects();
+  const outstanding = listOutstandingPayments();
+  const followups = listFollowups({ includeResolved: false });
+
+  const projectName = (id: number | null): string | null =>
+    id != null ? getProjectById(id)?.name ?? null : null;
+
+  const projectsOut = projects.map((p) => {
+    const deliverables = listDeliverables(p.id);
+    const doneCount = deliverables.filter((d) => d.status === "done").length;
+    const payments = listPayments({ projectId: p.id });
+    const outstandingAmount = payments
+      .filter((pay) => pay.status !== "paid" && pay.status !== "cancelled")
+      .reduce((sum, pay) => sum + pay.amount, 0);
+    const client = clients.find((c) => c.id === p.clientId) ?? null;
+    return {
+      id: p.id,
+      name: p.name,
+      client: client ? client.name : null,
+      status: p.status,
+      priority: p.priority,
+      riskLevel: p.riskLevel,
+      budget: p.budgetAmount != null ? formatMoney(p.budgetAmount, p.budgetCurrency) : null,
+      nextAction: p.nextAction,
+      nextActionDueDate: p.nextActionDueDate,
+      nextActionDays: daysUntil(p.nextActionDueDate),
+      deliverables: { done: doneCount, total: deliverables.length },
+      outstanding: outstandingAmount > 0 ? formatMoney(outstandingAmount, p.budgetCurrency) : null,
+    };
+  });
+
+  const clientsOut = clients.map((c) => {
+    const openFollowups = followups.filter((f) => f.clientId === c.id).length;
+    const projectCount = projects.filter((p) => p.clientId === c.id).length;
+    return {
+      id: c.id,
+      name: c.name,
+      organization: c.organization,
+      status: c.status,
+      preferredChannel: c.preferredChannel,
+      projectCount,
+      openFollowups,
+    };
+  });
+
+  const paymentsOut = outstanding.map((p) => ({
+    id: p.id,
+    amount: formatMoney(p.amount, p.currency),
+    status: p.status,
+    dueDate: p.dueDate,
+    days: daysUntil(p.dueDate),
+    overdue: isOverdue(p.dueDate),
+    project: projectName(p.projectId),
+  }));
+
+  const followupsOut = followups.map((f) => ({
+    id: f.id,
+    title: f.title,
+    dueDate: f.dueDate,
+    days: daysUntil(f.dueDate),
+    channel: f.channel,
+    project: projectName(f.projectId),
+    client: f.clientId != null ? clients.find((c) => c.id === f.clientId)?.name ?? null : null,
+  }));
+
+  const outstandingTotal = outstanding.reduce((sum, p) => sum + p.amount, 0);
+
+  return {
+    clients: clientsOut,
+    projects: projectsOut,
+    payments: paymentsOut,
+    followups: followupsOut,
+    totals: {
+      clients: clientsOut.length,
+      openProjects: projectsOut.length,
+      outstanding: outstanding.length ? formatMoney(outstandingTotal, outstanding[0]!.currency) : null,
+      overduePayments: outstanding.filter((p) => isOverdue(p.dueDate)).length,
+      openFollowups: followupsOut.length,
+    },
+    timestamp: Date.now(),
+  };
 }
 
 // ─── Route handler ──────────────────────────────────────────────
@@ -208,6 +302,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     return;
   }
 
+  if (path === "/api/clientops") {
+    try {
+      json(res, clientOpsSnapshot());
+    } catch (err) {
+      json(res, { error: (err as Error).message }, 500);
+    }
+    return;
+  }
+
   // Draft a reply for a task
   if (path.startsWith("/api/task/") && path.endsWith("/reply") && method === "POST") {
     const parts = path.split("/");
@@ -256,6 +359,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     } catch {
       res.writeHead(500, { "Content-Type": "text/plain" });
       res.end("Dashboard HTML not found");
+    }
+    return;
+  }
+
+  if (path === "/clientops" || path === "/clientops.html") {
+    try {
+      const html = readFileSync(join(__dirname, "..", "web", "clientops.html"), "utf-8");
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(html);
+    } catch {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("ClientOps HTML not found");
     }
     return;
   }

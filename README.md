@@ -198,6 +198,8 @@ Track freelance/agency work — clients, projects, deliverables, payments, and f
 
 > `janjak project` with no subcommand still shows the project inferred from your active window; add a subcommand (`add`, `list`, `summary`, …) to manage ClientOps projects.
 
+A live **ClientOps view** is also built into the web dashboard — run `janjak web` and click **ClientOps →** (or open `/clientops`) for projects, outstanding payments, follow-ups, and clients at a glance.
+
 ### Autonomy & Workflows
 
 | Command | Description |
@@ -311,6 +313,7 @@ clientops/          # Client operations (clients, projects, payments)
 └── commands.ts     # CLI verbs (client/project/deliverable/payment/followup/prep/risks)
 web/
 ├── index.html      # Web dashboard (live charts + panels)
+├── clientops.html  # ClientOps view (projects, payments, follow-ups, clients)
 └── setup.html      # Interactive setup wizard UI
 ```
 

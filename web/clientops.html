@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Janjak — ClientOps</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg2: #12121a;
+      --bg3: #1a1a28;
+      --border: #2a2a3a;
+      --text: #e0e0f0;
+      --text2: #8888aa;
+      --accent: #7c5cfc;
+      --cyan: #22d3ee;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --orange: #fb923c;
+      --radius: 16px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 32px; border-bottom: 1px solid var(--border);
+      background: var(--bg2); position: sticky; top: 0; z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .logo { font-size: 28px; }
+    .header h1 {
+      font-size: 20px; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .nav { display: flex; gap: 8px; align-items: center; }
+    .nav a {
+      color: var(--text2); text-decoration: none; font-size: 14px;
+      padding: 8px 14px; border-radius: 10px; border: 1px solid transparent;
+      transition: all .15s;
+    }
+    .nav a:hover { color: var(--text); background: var(--bg3); }
+    .nav a.active { color: var(--text); border-color: var(--border); background: var(--bg3); }
+
+    .kpis {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 16px; padding: 24px 32px 0; max-width: 1400px; margin: 0 auto;
+    }
+    .kpi {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+    }
+    .kpi .value { font-size: 26px; font-weight: 700; }
+    .kpi .label {
+      font-size: 12px; color: var(--text2); text-transform: uppercase;
+      letter-spacing: 1px; margin-top: 4px;
+    }
+    .kpi.warn .value { color: var(--red); }
+
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 20px; padding: 24px 32px; max-width: 1400px; margin: 0 auto;
+    }
+    .card {
+      background: var(--bg2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px;
+    }
+    .card.wide { grid-column: 1 / -1; }
+    .card-title {
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--text2); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .row {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .row:last-child { border-bottom: none; }
+    .row .main { min-width: 0; }
+    .row .name { font-weight: 600; }
+    .row .sub { color: var(--text2); font-size: 13px; margin-top: 3px; }
+    .row .right { text-align: right; white-space: nowrap; }
+    .empty { color: var(--text2); font-size: 14px; padding: 8px 0; }
+
+    .tag {
+      display: inline-block; font-size: 11px; font-weight: 600;
+      padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
+      letter-spacing: .5px; background: var(--bg3); color: var(--text2);
+    }
+    .tag.high, .tag.urgent, .tag.overdue { background: rgba(248,113,113,.15); color: var(--red); }
+    .tag.elevated, .tag.due_soon { background: rgba(251,191,36,.15); color: var(--yellow); }
+    .tag.in_progress { background: rgba(124,92,252,.18); color: var(--accent); }
+    .tag.paid, .tag.done { background: rgba(52,211,153,.15); color: var(--green); }
+    .due { font-size: 13px; color: var(--text2); }
+    .due.over { color: var(--red); }
+    .due.soon { color: var(--yellow); }
+    .loading { text-align: center; color: var(--text2); padding: 60px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <span class="logo">🧠</span>
+      <h1>Janjak · ClientOps</h1>
+    </div>
+    <nav class="nav">
+      <a href="/">Dashboard</a>
+      <a href="/clientops" class="active">ClientOps</a>
+    </nav>
+  </div>
+
+  <div id="kpis" class="kpis"></div>
+  <div id="grid" class="grid">
+    <div class="loading">Loading…</div>
+  </div>
+
+  <script>
+    const esc = (s) => (s == null ? "" : String(s).replace(/[&<>"]/g, (c) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]
+    )));
+
+    function dueText(days, date) {
+      if (date == null) return { text: "", cls: "" };
+      if (days == null) return { text: "due " + esc(date), cls: "" };
+      if (days < 0) return { text: "overdue " + Math.abs(days) + "d", cls: "over" };
+      if (days === 0) return { text: "due today", cls: "soon" };
+      if (days === 1) return { text: "due tomorrow", cls: "soon" };
+      return { text: "in " + days + "d", cls: days <= 3 ? "soon" : "" };
+    }
+
+    function kpi(value, label, warn) {
+      return `<div class="kpi ${warn ? "warn" : ""}"><div class="value">${esc(value)}</div><div class="label">${esc(label)}</div></div>`;
+    }
+
+    function projectRow(p) {
+      const d = dueText(p.nextActionDays, p.nextActionDueDate);
+      return `<div class="row">
+        <div class="main">
+          <div class="name">${esc(p.name)}</div>
+          <div class="sub">${esc(p.client || "unassigned")} · ${p.deliverables.done}/${p.deliverables.total} deliverables${p.nextAction ? " · next: " + esc(p.nextAction) : ""}</div>
+        </div>
+        <div class="right">
+          <span class="tag ${esc(p.status)}">${esc(p.status.replace(/_/g, " "))}</span>
+          ${p.riskLevel && p.riskLevel !== "normal" && p.riskLevel !== "low" ? `<span class="tag ${esc(p.riskLevel)}">${esc(p.riskLevel)}</span>` : ""}
+          ${p.outstanding ? `<div class="sub">${esc(p.outstanding)} due</div>` : ""}
+          ${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}
+        </div>
+      </div>`;
+    }
+
+    function paymentRow(p) {
+      const d = dueText(p.days, p.dueDate);
+      return `<div class="row">
+        <div class="main">
+          <div class="name">${esc(p.amount)}</div>
+          <div class="sub">${esc(p.project || "—")}</div>
+        </div>
+        <div class="right">
+          <span class="tag ${p.overdue ? "overdue" : esc(p.status)}">${esc(p.overdue ? "overdue" : p.status.replace(/_/g, " "))}</span>
+          ${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}
+        </div>
+      </div>`;
+    }
+
+    function followupRow(f) {
+      const d = dueText(f.days, f.dueDate);
+      const who = f.client || f.project || "";
+      return `<div class="row">
+        <div class="main">
+          <div class="name">${esc(f.title)}</div>
+          <div class="sub">${esc(who)}${f.channel ? " · " + esc(f.channel) : ""}</div>
+        </div>
+        <div class="right">${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}</div>
+      </div>`;
+    }
+
+    function clientRow(c) {
+      return `<div class="row">
+        <div class="main">
+          <div class="name">${esc(c.name)}${c.organization ? " · " + esc(c.organization) : ""}</div>
+          <div class="sub">${c.projectCount} project${c.projectCount === 1 ? "" : "s"}${c.openFollowups ? " · " + c.openFollowups + " follow-up" + (c.openFollowups === 1 ? "" : "s") : ""}${c.preferredChannel ? " · " + esc(c.preferredChannel) : ""}</div>
+        </div>
+        <div class="right"><span class="tag ${esc(c.status)}">${esc(c.status)}</span></div>
+      </div>`;
+    }
+
+    function section(title, icon, items, render) {
+      const body = items.length ? items.map(render).join("") : `<div class="empty">Nothing here yet.</div>`;
+      return `<div class="card"><div class="card-title">${icon} ${title}</div>${body}</div>`;
+    }
+
+    async function load() {
+      try {
+        const res = await fetch("/api/clientops");
+        const data = await res.json();
+        const t = data.totals || {};
+        document.getElementById("kpis").innerHTML =
+          kpi(t.openProjects ?? 0, "Open projects") +
+          kpi(t.clients ?? 0, "Clients") +
+          kpi(t.outstanding ?? "$0", "Outstanding") +
+          kpi(t.overduePayments ?? 0, "Overdue", (t.overduePayments ?? 0) > 0) +
+          kpi(t.openFollowups ?? 0, "Follow-ups");
+
+        document.getElementById("grid").innerHTML =
+          `<div class="card wide"><div class="card-title">📁 Projects</div>${
+            (data.projects || []).length ? data.projects.map(projectRow).join("") : '<div class="empty">No open projects.</div>'
+          }</div>` +
+          section("Outstanding payments", "💰", data.payments || [], paymentRow) +
+          section("Follow-ups", "🔔", data.followups || [], followupRow) +
+          section("Clients", "👤", data.clients || [], clientRow);
+      } catch (e) {
+        document.getElementById("grid").innerHTML = `<div class="loading">Could not load ClientOps data.</div>`;
+      }
+    }
+
+    load();
+    setInterval(load, 15000);
+  </script>
+</body>
+</html>
