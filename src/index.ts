@@ -96,6 +96,7 @@ import {
   formatTodaySummary,
 } from "./synthesis/daily.js";
 import { gatherWeeklyReview, formatWeeklyReview } from "./synthesis/weekly.js";
+import { registerClientOpsCommands } from "./clientops/commands.js";
 
 function confirmPrompt(question: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -1898,6 +1899,8 @@ program
     await buildOverlay();
     launchOverlay();
   });
+
+registerClientOpsCommands(program);
 
 program.parseAsync(process.argv).catch((err) => {
   console.error("Error:", err instanceof Error ? err.message : err);
