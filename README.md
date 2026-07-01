@@ -165,6 +165,35 @@ You own every byte. Everything is stored locally in SQLite at `~/.janjak/`; only
 | `janjak draft <id>` | Draft + open reply in Gmail. |
 | `janjak remind "<text>"` | Create a task + calendar event from natural language. |
 
+### Client Operations
+
+Track freelance/agency work — clients, projects, deliverables, payments, and follow-ups — locally alongside everything else Janjak knows.
+
+| Command | Description |
+|---------|-------------|
+| `janjak client add <name>` | Add a client (`--org`, `--email`, `--phone`, `--whatsapp`, `--channel`, `--notes`). |
+| `janjak client list` | List active clients (`--all` includes archived). |
+| `janjak client show <name>` | Full client profile: projects + open follow-ups. |
+| `janjak client update <name>` | Update client fields. |
+| `janjak client note <name> "<body>"` | Log a client note (`--type`). |
+| `janjak project add <name>` | Add a project (`--client`, `--budget`, `--currency`, `--priority`, `--status`, `--start`, `--end`). |
+| `janjak project list` | List open projects (`--all`, `--client`). |
+| `janjak project summary <name>` | Deliverables, payments, follow-ups & recent notes at a glance. |
+| `janjak project status <name> <status>` | Move a project through its lifecycle. |
+| `janjak project next <name> "<text>"` | Set the next action (`--due`). |
+| `janjak deliverable add <project> "<title>"` | Add a deliverable (`--due`, `--priority`). |
+| `janjak deliverable list <project>` | List a project's deliverables. |
+| `janjak deliverable done <id>` | Mark a deliverable done. |
+| `janjak payment add <project> <amount>` | Record a payment (`--due`, `--currency`, `--status`, `--notes`). |
+| `janjak payment list` | List payments (`--status`, `--client`). |
+| `janjak payment overdue` | Overdue + outstanding payments. |
+| `janjak payment paid <id>` | Mark a payment paid. |
+| `janjak followups` | All open follow-ups across clients & projects (`--all`). |
+| `janjak followup add <who> "<title>"` | Add a follow-up for a client or project (`--due`, `--channel`). |
+| `janjak followup done <id>` | Resolve a follow-up. |
+
+> `janjak project` with no subcommand still shows the project inferred from your active window; add a subcommand (`add`, `list`, `summary`, …) to manage ClientOps projects.
+
 ### Autonomy & Workflows
 
 | Command | Description |
@@ -263,6 +292,17 @@ src/
     ├── consolidate.ts  # Promote/decay memory + entity upkeep
     ├── daily.ts        # Nightly day summary + consolidation pass
     └── weekly.ts       # Weekly review gathering + formatting
+clientops/          # Client operations (clients, projects, payments)
+├── schema.ts       # SQLite tables for clients/projects/deliverables/payments/notes/followups
+├── types.ts        # Domain types + status/priority unions
+├── util.ts         # Due-date parsing, money formatting, overdue math
+├── clients.ts      # Client CRUD + lookup
+├── projects.ts     # Project CRUD + lifecycle status
+├── deliverables.ts # Deliverable CRUD
+├── payments.ts     # Payment CRUD + outstanding/overdue queries
+├── notes.ts        # Project/client notes
+├── followups.ts    # Follow-up CRUD
+└── commands.ts     # CLI verbs (client/project/deliverable/payment/followup)
 web/
 ├── index.html      # Web dashboard (live charts + panels)
 └── setup.html      # Interactive setup wizard UI
@@ -599,6 +639,7 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 - [x] **Super Brain L4 — Learning Loop** (feedback capture, adaptation, `why`)
 - [x] **Super Brain L5 — Synthesis** (daily/weekly consolidation, memory tiers, `review`)
 - [x] **Privacy Controls** (`forget --entity`, `export`, `--no-embed`)
+- [x] **Client Operations** (clients, projects, deliverables, payments, follow-ups — CLI)
 - [ ] Multi-device Context (iPhone/Watch location + motion signals)
 - [ ] Plugin System (`~/.janjak/plugins/` for community extensions)
 - [ ] Agent Mode (chain API calls + code analysis autonomously)
