@@ -257,7 +257,7 @@ src/
 ├── morning.ts      # AI morning briefing (calendar/inbox/tasks/plan)
 ├── nl-tasks.ts     # Natural language → task + calendar event creation
 ├── notify.ts       # macOS desktop notifications (Swift UserNotifications)
-├── proactive.ts    # Proactive notification engine (7 signal sources)
+├── proactive.ts    # Proactive notification engine (8 signal sources)
 ├── pomo.ts         # Pomodoro timer (25/5 auto-cycling with notifications)
 ├── streak.ts       # Daily streak tracker + gamification badges
 ├── project.ts      # Project detection from window titles + per-project tracking
@@ -657,6 +657,7 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 - [x] **ClientOps AI** (project summaries, meeting prep, payment follow-up drafts, risk scan)
 - [x] **ClientOps email linking** (`inbox --clientops`, `morning --clientops`)
 - [x] **ClientOps WhatsApp import** (chat export → notes + AI follow-ups)
+- [x] **ClientOps proactive alerts** (overdue payments, due follow-ups, at-risk projects)
 - [ ] Multi-device Context (iPhone/Watch location + motion signals)
 - [ ] Plugin System (`~/.janjak/plugins/` for community extensions)
 - [ ] Agent Mode (chain API calls + code analysis autonomously)

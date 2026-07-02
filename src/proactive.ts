@@ -29,6 +29,10 @@ import { getActionBaseTier } from "./autonomy.js";
 import { runDailyConsolidation } from "./synthesis/daily.js";
 import { listGoals } from "./personal/goals.js";
 import { listEntities } from "./graph/entities.js";
+import { listOutstandingPayments } from "./clientops/payments.js";
+import { listFollowups } from "./clientops/followups.js";
+import { listProjects } from "./clientops/projects.js";
+import { isOverdue, daysUntil, formatMoney } from "./clientops/util.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -43,7 +47,8 @@ export type AlertCategory =
   | "streak"
   | "milestone"
   | "goal"
-  | "relationship";
+  | "relationship"
+  | "clientops";
 
 export interface ProactiveAlert {
   id: string;
@@ -72,6 +77,7 @@ const COOLDOWNS: Record<AlertCategory, number> = {
   milestone: 60 * 60_000, // 1 hour between milestone celebrations
   goal: 4 * 60 * 60_000,  // 4 hours between goal nudges
   relationship: 6 * 60 * 60_000, // 6 hours between relationship nudges
+  clientops: 4 * 60 * 60_000, // 4 hours between client-ops alerts
 };
 
 function canFire(id: string, category: AlertCategory): boolean {
@@ -617,6 +623,115 @@ function checkRelationships(): ProactiveAlert[] {
   return alerts;
 }
 
+/** ClientOps: overdue payments, due follow-ups, and stalled/at-risk projects. */
+function checkClientOps(): ProactiveAlert[] {
+  const alerts: ProactiveAlert[] = [];
+
+  try {
+    const hour = new Date().getHours();
+    if (hour < 8 || hour > 20) return alerts; // stay quiet outside working hours
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 1) Overdue invoices — money already past its due date.
+    const overdue = listOutstandingPayments().filter((p) => isOverdue(p.dueDate));
+    if (overdue.length > 0) {
+      const id = `clientops-payments-${today}`;
+      if (canFire(id, "clientops")) {
+        const cur = overdue[0]!.currency;
+        const sameCurrency = overdue.every((p) => p.currency === cur);
+        const total = sameCurrency
+          ? formatMoney(overdue.reduce((s, p) => s + p.amount, 0), cur)
+          : `${overdue.length} invoices`;
+        const worstDays = Math.min(...overdue.map((p) => daysUntil(p.dueDate) ?? 0));
+        alerts.push({
+          id,
+          category: "clientops",
+          priority: overdue.length >= 3 || worstDays <= -14 ? "high" : "medium",
+          title: `💸 ${overdue.length} overdue payment${overdue.length === 1 ? "" : "s"} (${total})`,
+          message: overdue
+            .slice(0, 3)
+            .map((p) => {
+              const d = daysUntil(p.dueDate);
+              return `• ${formatMoney(p.amount, p.currency)} — overdue ${d != null ? -d : "?"}d`;
+            })
+            .join("\n"),
+          action: "janjak payment overdue",
+          actionLabel: "Review payments",
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // 2) Follow-ups that are due or past due.
+    const dueFollowups = listFollowups({ includeResolved: false }).filter((f) => {
+      const d = daysUntil(f.dueDate);
+      return d != null && d <= 0;
+    });
+    if (dueFollowups.length > 0) {
+      const id = `clientops-followups-${today}`;
+      if (canFire(id, "clientops")) {
+        alerts.push({
+          id,
+          category: "clientops",
+          priority: "medium",
+          title: `🔔 ${dueFollowups.length} client follow-up${dueFollowups.length === 1 ? "" : "s"} due`,
+          message: dueFollowups
+            .slice(0, 3)
+            .map((f) => `• ${f.title}${f.channel ? ` (${f.channel})` : ""}`)
+            .join("\n"),
+          action: "janjak followups",
+          actionLabel: "View follow-ups",
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // 3) Projects flagged at-risk or with no update in a while.
+    const STALE_DAYS = 10;
+    const now = Date.now();
+    const flagged = listProjects()
+      .map((p) => {
+        const stamp = p.lastUpdateAt ?? p.updatedAt;
+        const parsed = stamp ? Date.parse(stamp) : NaN;
+        const daysSince = Number.isFinite(parsed)
+          ? Math.floor((now - parsed) / 86_400_000)
+          : null;
+        const atRisk = p.riskLevel === "elevated" || p.riskLevel === "high";
+        const stale = daysSince != null && daysSince >= STALE_DAYS;
+        return { project: p, daysSince, atRisk, stale };
+      })
+      .filter((x) => x.atRisk || x.stale);
+
+    if (flagged.length > 0) {
+      const id = `clientops-projects-${today}`;
+      if (canFire(id, "clientops")) {
+        const anyHigh = flagged.some((x) => x.project.riskLevel === "high");
+        alerts.push({
+          id,
+          category: "clientops",
+          priority: anyHigh ? "high" : "medium",
+          title: `⚠️ ${flagged.length} project${flagged.length === 1 ? "" : "s"} need attention`,
+          message: flagged
+            .slice(0, 3)
+            .map((x) => {
+              const reason = x.atRisk
+                ? `risk: ${x.project.riskLevel}`
+                : `no update in ${x.daysSince}d`;
+              return `• ${x.project.name} — ${reason}`;
+            })
+            .join("\n"),
+          action: "janjak risks",
+          actionLabel: "Scan project risks",
+          timestamp: Date.now(),
+        });
+      }
+    }
+  } catch { /* clientops not available */ }
+
+  return alerts;
+}
+
 // ─── Main Engine ────────────────────────────────────────────────
 
 /** Run all checks and return prioritized alerts (highest first). */
@@ -656,6 +771,7 @@ export async function getProactiveAlerts(): Promise<ProactiveAlert[]> {
   allAlerts.push(...checkStreak());
   allAlerts.push(...checkGoals());
   allAlerts.push(...checkRelationships());
+  allAlerts.push(...checkClientOps());
   allAlerts.push(...checkEndOfDay());
 
   // Run async checks
