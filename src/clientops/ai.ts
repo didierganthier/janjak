@@ -169,3 +169,46 @@ Sort highest risk first. Skip projects that are genuinely fine (mention them in 
 
   return res.choices[0]?.message?.content?.trim() ?? "Could not assess risks.";
 }
+
+/** Extract action items / follow-ups from a chat transcript (WhatsApp, etc.). */
+export async function extractChatFollowups(
+  transcript: string,
+  clientName: string,
+  today = new Date().toISOString().slice(0, 10)
+): Promise<Array<{ title: string; dueDate: string | null }>> {
+  const client = getOpenAIClient();
+  const prompt = `Today is ${today}. Read this chat with a client (${clientName}) and list concrete follow-ups/action items for ME (the freelancer) — things I promised, owe, or must chase.
+
+CHAT:
+${transcript}
+
+Return STRICT JSON: {"followups":[{"title":"...","dueDate":"YYYY-MM-DD or null"}]}.
+Rules: only real, actionable items (max 6). Short imperative titles. Infer dueDate only if the chat clearly implies one, else null. If nothing actionable, return {"followups":[]}. Do not invent items.`;
+
+  const res = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content:
+          "You extract actionable follow-ups from client chats for a solo freelancer. You output strict JSON only and never invent tasks.",
+      },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.2,
+    max_tokens: 400,
+    response_format: { type: "json_object" },
+  });
+
+  const raw = res.choices[0]?.message?.content?.trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { followups?: Array<{ title?: string; dueDate?: string | null }> };
+    return (parsed.followups ?? [])
+      .filter((f) => f.title && f.title.trim())
+      .map((f) => ({ title: f.title!.trim(), dueDate: f.dueDate ?? null }));
+  } catch {
+    return [];
+  }
+}
+

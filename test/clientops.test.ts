@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { parseDueDate, formatMoney, isOverdue, daysUntil } from "../src/clientops/util.js";
+import { parseWhatsAppExport, buildTranscript } from "../src/clientops/whatsapp.js";
 
 function isoDaysFromNow(offset: number): string {
   const d = new Date();
@@ -46,4 +47,35 @@ test("daysUntil returns signed day distance", () => {
   assert.equal(daysUntil(isoDaysFromNow(3)), 3);
   assert.equal(daysUntil(isoDaysFromNow(-2)), -2);
   assert.equal(daysUntil(null), null);
+});
+
+test("parseWhatsAppExport handles iOS format + multiline", () => {
+  const chat = [
+    "[2/14/25, 3:45:12 PM] Keron Niles: Hey, can you send the logo?",
+    "[2/14/25, 3:46:00 PM] Me: Sure, tomorrow.",
+    "It'll be the full pack.",
+  ].join("\n");
+  const msgs = parseWhatsAppExport(chat);
+  assert.equal(msgs.length, 2);
+  assert.equal(msgs[0]!.sender, "Keron Niles");
+  assert.equal(msgs[0]!.text, "Hey, can you send the logo?");
+  assert.equal(msgs[1]!.sender, "Me");
+  assert.equal(msgs[1]!.text, "Sure, tomorrow.\nIt'll be the full pack.");
+});
+
+test("parseWhatsAppExport handles Android format and skips system lines", () => {
+  const chat = [
+    "Messages and calls are end-to-end encrypted.",
+    "2/14/25, 3:45 PM - Keron: Are we still on for Friday?",
+    "2/14/25, 3:47 PM - Me: Yes",
+  ].join("\n");
+  const msgs = parseWhatsAppExport(chat);
+  assert.equal(msgs.length, 2);
+  assert.equal(msgs[0]!.sender, "Keron");
+  assert.equal(msgs[1]!.text, "Yes");
+});
+
+test("buildTranscript renders sender: text lines", () => {
+  const msgs = parseWhatsAppExport("[2/14/25, 3:45:12 PM] Keron: Hi there");
+  assert.equal(buildTranscript(msgs), "Keron: Hi there");
 });

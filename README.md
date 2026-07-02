@@ -196,6 +196,7 @@ Track freelance/agency work — clients, projects, deliverables, payments, and f
 | `janjak followups` | All open follow-ups across clients & projects (`--all`). |
 | `janjak followup add <who> "<title>"` | Add a follow-up for a client or project (`--due`, `--channel`). |
 | `janjak followup done <id>` | Resolve a follow-up. |
+| `janjak whatsapp import <file> --client <name>` | Import a WhatsApp chat export as notes (`--project`, `--ai` for follow-ups). |
 
 > `janjak project` with no subcommand still shows the project inferred from your active window; add a subcommand (`add`, `list`, `summary`, …) to manage ClientOps projects.
 
@@ -313,7 +314,8 @@ clientops/          # Client operations (clients, projects, payments)
 ├── context-builder.ts # Assemble a project's full picture for AI prompts
 ├── ai.ts           # AI: status summary, meeting prep, payment follow-up, risk scan
 ├── linker.ts       # Link Gmail emails to clients/projects + morning section
-└── commands.ts     # CLI verbs (client/project/deliverable/payment/followup/prep/risks)
+├── whatsapp.ts     # Parse WhatsApp chat exports → notes + AI-extracted follow-ups
+└── commands.ts     # CLI verbs (client/project/deliverable/payment/followup/prep/risks/whatsapp)
 web/
 ├── index.html      # Web dashboard (live charts + panels)
 ├── clientops.html  # ClientOps view (projects, payments, follow-ups, clients)
@@ -654,6 +656,7 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 - [x] **Client Operations** (clients, projects, deliverables, payments, follow-ups — CLI)
 - [x] **ClientOps AI** (project summaries, meeting prep, payment follow-up drafts, risk scan)
 - [x] **ClientOps email linking** (`inbox --clientops`, `morning --clientops`)
+- [x] **ClientOps WhatsApp import** (chat export → notes + AI follow-ups)
 - [ ] Multi-device Context (iPhone/Watch location + motion signals)
 - [ ] Plugin System (`~/.janjak/plugins/` for community extensions)
 - [ ] Agent Mode (chain API calls + code analysis autonomously)

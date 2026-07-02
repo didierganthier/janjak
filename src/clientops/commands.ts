@@ -45,10 +45,13 @@ import { buildProjectContext } from "./context-builder.js";
 import {
   draftPaymentFollowup,
   detectRisks,
+  extractChatFollowups,
   prepBrief,
   summarizeProject,
   type FollowupTone,
 } from "./ai.js";
+import { importWhatsAppFile, saveExtractedFollowups } from "./whatsapp.js";
+import { resolveProjectForClient } from "./linker.js";
 import {
   DELIVERABLE_STATUSES,
   NOTE_TYPES,
@@ -115,6 +118,7 @@ export function registerClientOpsCommands(program: Command): void {
   registerPayment(program);
   registerFollowup(program);
   registerAI(program);
+  registerWhatsApp(program);
 }
 
 // ── clients ─────────────────────────────────────────────────────
@@ -728,5 +732,47 @@ function registerAI(program: Command): void {
       } catch (err) {
         die((err as Error).message);
       }
+    });
+}
+
+// ── WhatsApp import (Phase 5) ───────────────────────────────────
+function registerWhatsApp(program: Command): void {
+  const wa = program.command("whatsapp").description("Import WhatsApp chat exports into ClientOps.");
+
+  wa
+    .command("import <file>")
+    .description("Import a WhatsApp chat export (.txt) under a client.")
+    .requiredOption("--client <name>", "Client this chat belongs to")
+    .option("--project <name>", "Link the chat to a specific project")
+    .option("--ai", "Extract action items into follow-ups (requires OPENAI_API_KEY)")
+    .action(async (file: string, opts: { client: string; project?: string; ai?: boolean }) => {
+      const client = requireClient(opts.client);
+      const project = opts.project ? requireProject(opts.project) : resolveProjectForClient(client.id);
+
+      let result;
+      try {
+        result = importWhatsAppFile({ client, project, filePath: file });
+      } catch (err) {
+        die(`Could not read "${file}": ${(err as Error).message}`);
+      }
+
+      if (result.messageCount === 0) {
+        die("No messages found — is this a WhatsApp .txt export?");
+      }
+
+      console.log(`\n💬 WhatsApp import — ${clientLabel(client)}${project ? ` → ${project.name}` : ""}`);
+      console.log(`   ${result.messageCount} messages · ${result.range} · ${result.senders.length} participant${result.senders.length === 1 ? "" : "s"}`);
+      console.log(`   ${result.noteCreated ? "🆕 Logged transcript as a note." : "· Already imported (note exists)."}`);
+
+      if (opts.ai) {
+        try {
+          const items = await extractChatFollowups(result.transcript, client.name);
+          const created = saveExtractedFollowups(client, project, items);
+          console.log(`   🔔 ${created} new follow-up${created === 1 ? "" : "s"} from ${items.length} detected action item${items.length === 1 ? "" : "s"}.`);
+        } catch (err) {
+          console.log(`   ⚠️  Follow-up extraction skipped: ${(err as Error).message}`);
+        }
+      }
+      console.log();
     });
 }
