@@ -197,3 +197,58 @@ export interface Followup {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── Milestones ───────────────────────────────────────────────────
+export type MilestoneStatus = "pending" | "reached" | "invoiced" | "paid";
+export const MILESTONE_STATUSES: MilestoneStatus[] = ["pending", "reached", "invoiced", "paid"];
+
+export interface Milestone {
+  id: number;
+  projectId: number;
+  title: string;
+  description: string | null;
+  amount: number | null;
+  currency: string;
+  dueDate: string | null;
+  status: MilestoneStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MilestoneInput {
+  projectId: number;
+  title: string;
+  description?: string | null;
+  amount?: number | null;
+  currency?: string;
+  dueDate?: string | null;
+  status?: MilestoneStatus;
+}
+
+// ── Documents ────────────────────────────────────────────────────
+export type DocumentStatus = "draft" | "sent" | "signed" | "archived";
+export const DOCUMENT_STATUSES: DocumentStatus[] = ["draft", "sent", "signed", "archived"];
+
+export interface ProjectDocument {
+  id: number;
+  projectId: number | null;
+  clientId: number | null;
+  title: string;
+  documentType: string | null;
+  content: string | null;
+  filePath: string | null;
+  status: DocumentStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DocumentInput {
+  projectId?: number | null;
+  clientId?: number | null;
+  title: string;
+  documentType?: string | null;
+  content?: string | null;
+  filePath?: string | null;
+  status?: DocumentStatus;
+}
+

@@ -678,21 +678,23 @@ program
 
 program
   .command("ingest")
-  .description("Backfill semantic memory from existing tasks and sessions.")
+  .description("Backfill semantic memory from existing tasks, sessions, and ClientOps notes.")
   .option("--tasks-only", "Only ingest tasks")
   .option("--sessions-only", "Only ingest sessions")
+  .option("--clientops-only", "Only ingest ClientOps notes")
   .option("--task-limit <n>", "Max tasks to embed", "500")
   .option("--session-days <n>", "Session lookback in days", "30")
   .option("--session-min-minutes <n>", "Skip sessions shorter than this", "5")
-  .action(async (opts: { tasksOnly?: boolean; sessionsOnly?: boolean; taskLimit: string; sessionDays: string; sessionMinMinutes: string }) => {
+  .action(async (opts: { tasksOnly?: boolean; sessionsOnly?: boolean; clientopsOnly?: boolean; taskLimit: string; sessionDays: string; sessionMinMinutes: string }) => {
     const taskLimit = Math.max(1, parseInt(opts.taskLimit, 10) || 500);
     const sessionDays = Math.max(1, parseInt(opts.sessionDays, 10) || 30);
     const sessionMinMinutes = Math.max(0, parseInt(opts.sessionMinMinutes, 10) || 5);
-    const includeTasks = !opts.sessionsOnly;
-    const includeSessions = !opts.tasksOnly;
+    const includeTasks = !opts.sessionsOnly && !opts.clientopsOnly;
+    const includeSessions = !opts.tasksOnly && !opts.clientopsOnly;
+    const includeClientOps = !opts.tasksOnly && !opts.sessionsOnly;
     console.log("\n  Embedding existing data (this may take a minute)...\n");
     try {
-      const results = await ingestAll({ taskLimit, sessionDays, sessionMinMinutes, includeTasks, includeSessions });
+      const results = await ingestAll({ taskLimit, sessionDays, sessionMinMinutes, includeTasks, includeSessions, includeClientOps });
       console.log(formatIngestReport(results));
     } catch (err) {
       console.error(`\n  Ingest failed: ${(err as Error).message}\n`);
@@ -1394,11 +1396,15 @@ program
       console.log(report);
 
       if (opts.clientops) {
-        const { scanClientOpsInbox, formatClientOpsInbox } = await import("./clientops/linker.js");
+        const { scanClientOpsInbox, formatClientOpsInbox, scanClientOpsCalendar, formatClientOpsCalendar } = await import("./clientops/linker.js");
         const linked = await scanClientOpsInbox(15);
         console.log("\n🗂️  ClientOps");
         console.log("─".repeat(30));
         console.log(formatClientOpsInbox(linked));
+        const events = await scanClientOpsCalendar();
+        console.log("\n📅 Calendar");
+        console.log("─".repeat(30));
+        console.log(formatClientOpsCalendar(events));
       }
     } catch (err) {
       console.error("Error scanning inbox:", err instanceof Error ? err.message : err);

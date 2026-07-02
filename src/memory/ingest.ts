@@ -5,6 +5,7 @@
 import { getDb } from "../db.js";
 import { embed } from "./embeddings.js";
 import { insertMemory, type MemoryType } from "./vector-store.js";
+import { ensureClientOpsSchema } from "../clientops/schema.js";
 
 export interface IngestProgress {
   type: MemoryType;
@@ -122,12 +123,96 @@ async function ingestSessions(daysBack: number, minMinutes: number): Promise<Ing
   return progress;
 }
 
+interface ClientOpsNoteRow {
+  id: number;
+  project_id: number | null;
+  client_id: number | null;
+  title: string | null;
+  body: string;
+  note_type: string;
+  source: string | null;
+  created_at: string;
+  project_name: string | null;
+  client_name: string | null;
+  client_org: string | null;
+}
+
+/** Parse a ClientOps TEXT timestamp (CURRENT_TIMESTAMP form) to epoch millis. */
+function parseClientOpsTimestamp(ts: string | null): number {
+  if (!ts) return Date.now();
+  // SQLite CURRENT_TIMESTAMP is "YYYY-MM-DD HH:MM:SS" in UTC.
+  const parsed = Date.parse(ts.includes("T") ? ts : ts.replace(" ", "T") + "Z");
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+const IMPORTANT_NOTE_TYPES = new Set(["risk", "decision", "scope_change", "payment_note"]);
+
+async function ingestClientOpsNotes(limit: number): Promise<IngestProgress> {
+  ensureClientOpsSchema();
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `SELECT n.id, n.project_id, n.client_id, n.title, n.body, n.note_type, n.source, n.created_at,
+              p.name AS project_name, c.name AS client_name, c.organization AS client_org
+       FROM project_notes n
+       LEFT JOIN client_projects p ON p.id = n.project_id
+       LEFT JOIN clients c ON c.id = n.client_id
+       ORDER BY n.created_at DESC LIMIT ?`
+    )
+    .all(limit) as ClientOpsNoteRow[];
+
+  const already = existingSourceIds("note");
+  const progress: IngestProgress = { type: "note", scanned: rows.length, inserted: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const key = `clientops-note:${row.id}`;
+    if (already.has(key)) {
+      progress.skipped++;
+      continue;
+    }
+    const who = row.client_org
+      ? `${row.client_name} (${row.client_org})`
+      : row.client_name ?? "";
+    const header = [
+      row.project_name ? `Project: ${row.project_name}` : "",
+      who ? `Client: ${who}` : "",
+      `Type: ${row.note_type}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const text = `${header}\n${row.title ? row.title + "\n" : ""}${row.body}`.trim();
+    try {
+      const vec = await embed(text);
+      insertMemory({
+        type: "note",
+        text,
+        embedding: vec,
+        sourceId: key,
+        metadata: {
+          noteType: row.note_type,
+          projectId: row.project_id,
+          clientId: row.client_id,
+          source: "clientops",
+        },
+        timestamp: parseClientOpsTimestamp(row.created_at),
+        importance: IMPORTANT_NOTE_TYPES.has(row.note_type) ? 0.75 : 0.55,
+      });
+      progress.inserted++;
+    } catch {
+      // skip on failure
+    }
+  }
+  return progress;
+}
+
 export interface IngestOptions {
   taskLimit?: number;
   sessionDays?: number;
   sessionMinMinutes?: number;
   includeTasks?: boolean;
   includeSessions?: boolean;
+  includeClientOps?: boolean;
+  clientOpsLimit?: number;
 }
 
 export async function ingestAll(opts: IngestOptions = {}): Promise<IngestProgress[]> {
@@ -137,11 +222,14 @@ export async function ingestAll(opts: IngestOptions = {}): Promise<IngestProgres
     sessionMinMinutes = 5,
     includeTasks = true,
     includeSessions = true,
+    includeClientOps = true,
+    clientOpsLimit = 500,
   } = opts;
 
   const results: IngestProgress[] = [];
   if (includeTasks) results.push(await ingestTasks(taskLimit));
   if (includeSessions) results.push(await ingestSessions(sessionDays, sessionMinMinutes));
+  if (includeClientOps) results.push(await ingestClientOpsNotes(clientOpsLimit));
   return results;
 }
 

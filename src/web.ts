@@ -24,8 +24,8 @@ import type { TaskStatus } from "./types.js";
 import { listClients } from "./clientops/clients.js";
 import { listProjects, getProjectById } from "./clientops/projects.js";
 import { listDeliverables } from "./clientops/deliverables.js";
-import { listPayments, listOutstandingPayments } from "./clientops/payments.js";
-import { listFollowups } from "./clientops/followups.js";
+import { listPayments, listOutstandingPayments, markPaymentPaid } from "./clientops/payments.js";
+import { listFollowups, setFollowupStatus } from "./clientops/followups.js";
 import { formatMoney, isOverdue, daysUntil } from "./clientops/util.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -308,6 +308,38 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
     } catch (err) {
       json(res, { error: (err as Error).message }, 500);
     }
+    return;
+  }
+
+  // Mark a ClientOps payment as paid.
+  if (path.startsWith("/api/clientops/payment/") && path.endsWith("/paid") && method === "POST") {
+    const id = parseInt(path.split("/")[4] ?? "", 10);
+    if (isNaN(id)) {
+      json(res, { error: "Invalid payment id" }, 400);
+      return;
+    }
+    const updated = markPaymentPaid(id);
+    if (!updated) {
+      json(res, { error: "Payment not found" }, 404);
+      return;
+    }
+    json(res, { ok: true });
+    return;
+  }
+
+  // Resolve (mark done) a ClientOps follow-up.
+  if (path.startsWith("/api/clientops/followup/") && path.endsWith("/done") && method === "POST") {
+    const id = parseInt(path.split("/")[4] ?? "", 10);
+    if (isNaN(id)) {
+      json(res, { error: "Invalid follow-up id" }, 400);
+      return;
+    }
+    const updated = setFollowupStatus(id, "done");
+    if (!updated) {
+      json(res, { error: "Follow-up not found" }, 404);
+      return;
+    }
+    json(res, { ok: true });
     return;
   }
 

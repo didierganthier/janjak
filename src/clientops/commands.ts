@@ -18,6 +18,7 @@ import {
   getProjectById,
   listProjects,
   setProjectNextAction,
+  setProjectRisk,
   setProjectStatus,
 } from "./projects.js";
 import {
@@ -40,6 +41,18 @@ import {
   listFollowups,
   setFollowupStatus,
 } from "./followups.js";
+import {
+  createMilestone,
+  getMilestoneById,
+  listMilestones,
+  setMilestoneStatus,
+} from "./milestones.js";
+import {
+  createDocument,
+  getDocumentById,
+  listDocuments,
+  setDocumentStatus,
+} from "./documents.js";
 import { daysUntil, formatMoney, isOverdue, parseDueDate } from "./util.js";
 import { buildProjectContext } from "./context-builder.js";
 import {
@@ -58,6 +71,9 @@ import {
   PAYMENT_STATUSES,
   PROJECT_PRIORITIES,
   PROJECT_STATUSES,
+  RISK_LEVELS,
+  MILESTONE_STATUSES,
+  DOCUMENT_STATUSES,
   type Client,
   type ClientProject,
   type DeliverableStatus,
@@ -65,6 +81,9 @@ import {
   type PaymentStatus,
   type ProjectPriority,
   type ProjectStatus,
+  type RiskLevel,
+  type MilestoneStatus,
+  type DocumentStatus,
 } from "./types.js";
 
 // ── small helpers ───────────────────────────────────────────────
@@ -117,6 +136,8 @@ export function registerClientOpsCommands(program: Command): void {
   registerDeliverable(program);
   registerPayment(program);
   registerFollowup(program);
+  registerMilestone(program);
+  registerDocument(program);
   registerAI(program);
   registerWhatsApp(program);
 }
@@ -334,6 +355,15 @@ function registerProject(program: Command): void {
     });
 
   project
+    .command("risk <name> <level>")
+    .description(`Set a project's risk level (${RISK_LEVELS.join(", ")}).`)
+    .action((name: string, level: string) => {
+      const p = requireProject(name);
+      const updated = setProjectRisk(p.id, validateRiskLevel(level));
+      console.log(`\n✅ ${updated!.name} risk → ${updated!.riskLevel}\n`);
+    });
+
+  project
     .command("next <name> <text...>")
     .description("Set the project's next action.")
     .option("--due <date>", "Due date for the next action")
@@ -392,6 +422,16 @@ function printProjectSummary(p: ClientProject): void {
     console.log(`\n   Payments (${formatMoney(outstanding, p.budgetCurrency)} outstanding):`);
     for (const pay of payments) {
       console.log(`     [#${pay.id}] ${formatMoney(pay.amount, pay.currency)} — ${pay.status}${dueLabel(pay.dueDate)}`);
+    }
+  }
+
+  const milestones = listMilestones(p.id);
+  if (milestones.length) {
+    const paid = milestones.filter((m) => m.status === "paid").length;
+    console.log(`\n   Milestones (${paid}/${milestones.length} paid):`);
+    for (const m of milestones) {
+      const amt = m.amount != null ? ` — ${formatMoney(m.amount, m.currency)}` : "";
+      console.log(`     [#${m.id}] ${m.title} (${m.status})${amt}${dueLabel(m.dueDate)}`);
     }
   }
 
@@ -648,6 +688,137 @@ function registerFollowup(program: Command): void {
   void getFollowupById;
 }
 
+// ── milestones ──────────────────────────────────────────────────
+function registerMilestone(program: Command): void {
+  const milestone = program
+    .command("milestone")
+    .description("Manage project milestones (billing checkpoints).");
+
+  milestone
+    .command("add <project> <title...>")
+    .description("Add a milestone to a project.")
+    .option("--amount <amount>", "Milestone amount")
+    .option("--currency <code>", "Currency", "USD")
+    .option("--due <date>", "Due date")
+    .option("--desc <description>", "Short description")
+    .action(
+      (project: string, titleParts: string[], opts: { amount?: string; currency: string; due?: string; desc?: string }) => {
+        const p = requireProject(project);
+        const title = join(titleParts);
+        if (!title) die("Milestone title is empty.");
+        const m = createMilestone({
+          projectId: p.id,
+          title,
+          description: opts.desc ?? null,
+          amount: opts.amount != null ? parseFloat(opts.amount) : null,
+          currency: opts.currency ?? "USD",
+          dueDate: parseDueDate(opts.due),
+        });
+        const amt = m.amount != null ? ` (${formatMoney(m.amount, m.currency)})` : "";
+        console.log(`\n🏁 Milestone #${m.id} added to ${p.name}: ${m.title}${amt}\n`);
+      },
+    );
+
+  milestone
+    .command("list <project...>")
+    .description("List a project's milestones.")
+    .action((projectParts: string[]) => {
+      const p = requireProject(join(projectParts));
+      const milestones = listMilestones(p.id);
+      if (milestones.length === 0) {
+        console.log(`\n  No milestones yet for ${p.name}.\n`);
+        return;
+      }
+      console.log(`\n🏁 Milestones — ${p.name} (${milestones.length})\n`);
+      for (const m of milestones) {
+        const amt = m.amount != null ? ` · ${formatMoney(m.amount, m.currency)}` : "";
+        console.log(`  [#${m.id}] ${m.title} — ${m.status}${amt}${dueLabel(m.dueDate)}`);
+      }
+      console.log();
+    });
+
+  milestone
+    .command("status <id> <status>")
+    .description(`Set a milestone's status (${MILESTONE_STATUSES.join(", ")}).`)
+    .action((id: string, status: string) => {
+      const updated = setMilestoneStatus(parseInt(id, 10), validateMilestoneStatus(status));
+      if (!updated) die(`Milestone #${id} not found.`);
+      console.log(`\n✅ Milestone #${id} → ${updated.status}\n`);
+    });
+
+  void getMilestoneById;
+}
+
+// ── documents ───────────────────────────────────────────────────
+function registerDocument(program: Command): void {
+  const doc = program
+    .command("docs")
+    .description("Track project documents (proposals, contracts, SOWs).");
+
+  doc
+    .command("add <title...>")
+    .description("Register a document for a project or client.")
+    .option("--project <name>", "Link to a project")
+    .option("--client <name>", "Link to a client")
+    .option("--type <type>", "Document type (proposal/contract/sow/invoice/…)")
+    .option("--file <path>", "Path to the document file")
+    .option("--status <status>", `Status (${DOCUMENT_STATUSES.join(", ")})`, "draft")
+    .action(
+      (titleParts: string[], opts: { project?: string; client?: string; type?: string; file?: string; status: string }) => {
+        const title = join(titleParts);
+        if (!title) die("Document title is empty.");
+        const project = opts.project ? requireProject(opts.project) : null;
+        const client = opts.client ? requireClient(opts.client) : null;
+        if (!project && !client) {
+          die("Link a document with --project <name> or --client <name>.");
+        }
+        const d = createDocument({
+          projectId: project?.id ?? null,
+          clientId: client?.id ?? project?.clientId ?? null,
+          title,
+          documentType: opts.type ?? null,
+          filePath: opts.file ?? null,
+          status: validateDocumentStatus(opts.status),
+        });
+        const where = project ? project.name : clientLabel(client!);
+        console.log(`\n📄 Document #${d.id} registered for ${where}: ${d.title} (${d.status})\n`);
+      },
+    );
+
+  doc
+    .command("list")
+    .description("List tracked documents.")
+    .option("--project <name>", "Filter by project")
+    .option("--client <name>", "Filter by client")
+    .action((opts: { project?: string; client?: string }) => {
+      const projectId = opts.project ? requireProject(opts.project).id : undefined;
+      const clientId = opts.client ? requireClient(opts.client).id : undefined;
+      const docs = listDocuments({ projectId, clientId });
+      if (docs.length === 0) {
+        console.log("\n  No documents tracked yet.\n");
+        return;
+      }
+      console.log(`\n📄 Documents (${docs.length})\n`);
+      for (const d of docs) {
+        const type = d.documentType ? ` · ${d.documentType}` : "";
+        const file = d.filePath ? ` · ${d.filePath}` : "";
+        console.log(`  [#${d.id}] ${d.title} — ${d.status}${type}${file}`);
+      }
+      console.log();
+    });
+
+  doc
+    .command("status <id> <status>")
+    .description(`Set a document's status (${DOCUMENT_STATUSES.join(", ")}).`)
+    .action((id: string, status: string) => {
+      const updated = setDocumentStatus(parseInt(id, 10), validateDocumentStatus(status));
+      if (!updated) die(`Document #${id} not found.`);
+      console.log(`\n✅ Document #${id} → ${updated.status}\n`);
+    });
+
+  void getDocumentById;
+}
+
 // ── validators ──────────────────────────────────────────────────
 function validateProjectStatus(value: string): ProjectStatus {
   if (!PROJECT_STATUSES.includes(value as ProjectStatus)) {
@@ -661,6 +832,13 @@ function validateProjectPriority(value: string): ProjectPriority {
     die(`Invalid priority. Use one of: ${PROJECT_PRIORITIES.join(", ")}`);
   }
   return value as ProjectPriority;
+}
+
+function validateRiskLevel(value: string): RiskLevel {
+  if (!RISK_LEVELS.includes(value as RiskLevel)) {
+    die(`Invalid risk level. Use one of: ${RISK_LEVELS.join(", ")}`);
+  }
+  return value as RiskLevel;
 }
 
 function validateDeliverableStatus(value: string): DeliverableStatus {
@@ -682,6 +860,20 @@ function validateNoteType(value: string): NoteType {
     die(`Invalid note type. Use one of: ${NOTE_TYPES.join(", ")}`);
   }
   return value as NoteType;
+}
+
+function validateMilestoneStatus(value: string): MilestoneStatus {
+  if (!MILESTONE_STATUSES.includes(value as MilestoneStatus)) {
+    die(`Invalid milestone status. Use one of: ${MILESTONE_STATUSES.join(", ")}`);
+  }
+  return value as MilestoneStatus;
+}
+
+function validateDocumentStatus(value: string): DocumentStatus {
+  if (!DOCUMENT_STATUSES.includes(value as DocumentStatus)) {
+    die(`Invalid document status. Use one of: ${DOCUMENT_STATUSES.join(", ")}`);
+  }
+  return value as DocumentStatus;
 }
 
 const FOLLOWUP_TONES: FollowupTone[] = ["friendly", "professional", "firm"];

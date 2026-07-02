@@ -6,6 +6,8 @@
 import type { EmailMessage } from "../types.js";
 import type { Client, ClientProject } from "./types.js";
 import { findClientByEmail } from "./clients.js";
+import { listClients } from "./clients.js";
+import { findProject } from "./projects.js";
 import { listProjects } from "./projects.js";
 import { createNote, noteExistsBySourceRef } from "./notes.js";
 import { listOutstandingPayments } from "./payments.js";
@@ -13,6 +15,7 @@ import { listFollowups } from "./followups.js";
 import { getProjectById } from "./projects.js";
 import { formatMoney, isOverdue, daysUntil } from "./util.js";
 import { fetchRecentEmails } from "../gmail-client.js";
+import { getTodayEvents, type CalendarEvent } from "../calendar.js";
 
 /** Extract the bare email address from a "Name <email>" header value. */
 export function extractEmailAddress(from: string): string {
@@ -101,6 +104,110 @@ export function formatClientOpsInbox(linked: LinkedEmail[]): string {
   }
   const newCount = linked.filter((l) => l.logged).length;
   lines.push(`\n  ${newCount} new message${newCount === 1 ? "" : "s"} logged to ClientOps notes.`);
+  return lines.join("\n");
+}
+
+// ─── Calendar linking ──────────────────────────────────────────────
+
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+
+export interface LinkedEvent {
+  event: CalendarEvent;
+  client: Client;
+  project: ClientProject | null;
+  logged: boolean; // false when it was already logged before
+}
+
+/** Try to resolve a known client from an event's people + title. */
+function resolveClientForEvent(event: CalendarEvent): Client | null {
+  // 1) Prefer an explicit email match among organizer + attendees.
+  const people = [event.organizer, ...event.attendees].filter(Boolean);
+  for (const person of people) {
+    const addr = person.match(EMAIL_RE)?.[0];
+    if (addr) {
+      const byEmail = findClientByEmail(addr.toLowerCase());
+      if (byEmail) return byEmail;
+    }
+  }
+  // 2) Fall back to a name/org match in the title or people list.
+  const haystack = [event.title, ...people].join(" ").toLowerCase();
+  for (const client of listClients()) {
+    const name = client.name.trim().toLowerCase();
+    if (name.length >= 3 && haystack.includes(name)) return client;
+    const org = client.organization?.trim().toLowerCase();
+    if (org && org.length >= 3 && haystack.includes(org)) return client;
+  }
+  return null;
+}
+
+/**
+ * Match calendar events to known clients/projects and log each new one as a
+ * meeting_note (idempotent by Google Calendar event id).
+ */
+export function linkCalendarEvents(events: CalendarEvent[]): LinkedEvent[] {
+  const linked: LinkedEvent[] = [];
+
+  for (const event of events) {
+    if (!event.id) continue;
+    const client = resolveClientForEvent(event);
+    if (!client) continue;
+
+    // Prefer a project whose name appears in the title, else the client's
+    // single open project.
+    const byTitle = findProject(event.title);
+    const project =
+      byTitle && byTitle.clientId === client.id ? byTitle : resolveProjectForClient(client.id);
+
+    const sourceRef = `gcal:${event.id}`;
+    let logged = false;
+
+    if (!noteExistsBySourceRef(sourceRef)) {
+      const when = event.start.toISOString().slice(0, 16).replace("T", " ");
+      const people = [event.organizer, ...event.attendees].filter(Boolean).join(", ");
+      const body = [`Meeting: ${event.title}`, `When: ${when}`, people ? `With: ${people}` : ""]
+        .filter(Boolean)
+        .join("\n");
+      createNote({
+        projectId: project?.id ?? null,
+        clientId: client.id,
+        title: event.title || "(calendar event)",
+        body,
+        source: "calendar",
+        noteType: "meeting_note",
+        sourceRef,
+      });
+      logged = true;
+    }
+
+    linked.push({ event, client, project, logged });
+  }
+
+  return linked;
+}
+
+/** Fetch today's calendar events and link the ones tied to known clients. */
+export async function scanClientOpsCalendar(): Promise<LinkedEvent[]> {
+  const events = await getTodayEvents();
+  return linkCalendarEvents(events);
+}
+
+/** Render linked calendar events grouped by client. */
+export function formatClientOpsCalendar(linked: LinkedEvent[]): string {
+  if (linked.length === 0) {
+    return "  No calendar events tied to known clients today.";
+  }
+  const lines: string[] = [];
+  for (const l of linked) {
+    const label = l.client.organization
+      ? `${l.client.name} (${l.client.organization})`
+      : l.client.name;
+    const proj = l.project ? ` → ${l.project.name}` : "";
+    const tag = l.logged ? "🆕" : "·";
+    const time = l.event.start.toTimeString().slice(0, 5);
+    lines.push(`  ${tag} ${time} ${l.event.title} — ${label}${proj}`);
+  }
+  const newCount = linked.filter((l) => l.logged).length;
+  lines.push(`\n  ${newCount} new meeting${newCount === 1 ? "" : "s"} logged to ClientOps notes.`);
   return lines.join("\n");
 }
 

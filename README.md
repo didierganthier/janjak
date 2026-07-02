@@ -79,7 +79,7 @@ Janjak's 5-layer "super brain": it remembers, builds a model of you, learns from
 | `janjak recall "<query>"` | Semantic search across everything Janjak remembers. |
 | `janjak recall -t <type>` | Filter recall by source (note, email, voice, calendar, …). |
 | `janjak memory` | List recent stored memories. |
-| `janjak ingest` | Backfill semantic memory from existing tasks and sessions. |
+| `janjak ingest` | Backfill semantic memory from tasks, sessions & ClientOps notes (`--tasks-only`, `--sessions-only`, `--clientops-only`). |
 | `janjak who "<name>"` | Profile of a person/project/topic from the knowledge graph. |
 | `janjak network "<name>"` | Show an entity's relationships and connections. |
 | `janjak entities` | List the strongest entities Janjak knows. |
@@ -183,6 +183,8 @@ Track freelance/agency work — clients, projects, deliverables, payments, and f
 | `janjak project summary <name> --ai` | AI status summary (headline, progress, blockers, next action). |
 | `janjak project status <name> <status>` | Move a project through its lifecycle. |
 | `janjak project next <name> "<text>"` | Set the next action (`--due`). |
+| `janjak project risk <name> <level>` | Set a project's risk level directly (`healthy`, `watch`, `elevated`, `critical`). |
+| `janjak project note <name> "<body>"` | Log a project note (`--type`); notes flow into semantic memory via `ingest`. |
 | `janjak deliverable add <project> "<title>"` | Add a deliverable (`--due`, `--priority`). |
 | `janjak deliverable list <project>` | List a project's deliverables. |
 | `janjak deliverable done <id>` | Mark a deliverable done. |
@@ -196,11 +198,19 @@ Track freelance/agency work — clients, projects, deliverables, payments, and f
 | `janjak followups` | All open follow-ups across clients & projects (`--all`). |
 | `janjak followup add <who> "<title>"` | Add a follow-up for a client or project (`--due`, `--channel`). |
 | `janjak followup done <id>` | Resolve a follow-up. |
+| `janjak milestone add <project> "<title>"` | Add a payment milestone (`--amount`, `--currency`, `--due`, `--desc`). |
+| `janjak milestone list <project>` | List a project's milestones. |
+| `janjak milestone status <id> <status>` | Update a milestone (`pending`, `reached`, `invoiced`, `paid`). |
+| `janjak docs add "<title>"` | Track a document (`--project`/`--client`, `--type`, `--file`, `--status`). |
+| `janjak docs list` | List tracked documents (`--project`, `--client`). |
+| `janjak docs status <id> <status>` | Update a document (`draft`, `sent`, `signed`, `archived`). |
 | `janjak whatsapp import <file> --client <name>` | Import a WhatsApp chat export as notes (`--project`, `--ai` for follow-ups). |
 
 > `janjak project` with no subcommand still shows the project inferred from your active window; add a subcommand (`add`, `list`, `summary`, …) to manage ClientOps projects.
 
-A live **ClientOps view** is also built into the web dashboard — run `janjak web` and click **ClientOps →** (or open `/clientops`) for projects, outstanding payments, follow-ups, and clients at a glance.
+A live **ClientOps view** is also built into the web dashboard — run `janjak web` and click **ClientOps →** (or open `/clientops`) for projects, outstanding payments, follow-ups, and clients at a glance. The view has inline **Mark paid** and **Resolve** buttons so you can clear outstanding payments and follow-ups without leaving the dashboard.
+
+`janjak inbox --clientops` also links today's **calendar events** to known clients/projects (logging meeting notes), and `janjak ingest` embeds project & client notes into semantic memory so past decisions and risks surface in recall.
 
 ### Autonomy & Workflows
 
@@ -281,7 +291,7 @@ src/
 │   ├── embeddings.ts   # OpenAI text-embedding-3-small wrapper
 │   ├── vector-store.ts # SQLite BLOB vectors + cosine search + tier gating
 │   ├── recall.ts       # capture() + recall() public API
-│   └── ingest.ts       # Backfill embeddings from tasks/sessions
+│   └── ingest.ts       # Backfill embeddings from tasks/sessions/ClientOps notes
 ├── graph/          # Layer 2 — Entity knowledge graph
 │   ├── entities.ts     # Entity CRUD, mentions, cascade delete
 │   ├── relationships.ts# Entity relationships
@@ -302,20 +312,22 @@ src/
     ├── daily.ts        # Nightly day summary + consolidation pass
     └── weekly.ts       # Weekly review gathering + formatting
 clientops/          # Client operations (clients, projects, payments)
-├── schema.ts       # SQLite tables for clients/projects/deliverables/payments/notes/followups
+├── schema.ts       # SQLite tables for clients/projects/deliverables/payments/milestones/documents/notes/followups
 ├── types.ts        # Domain types + status/priority unions
 ├── util.ts         # Due-date parsing, money formatting, overdue math
 ├── clients.ts      # Client CRUD + lookup
 ├── projects.ts     # Project CRUD + lifecycle status
 ├── deliverables.ts # Deliverable CRUD
 ├── payments.ts     # Payment CRUD + outstanding/overdue queries
+├── milestones.ts   # Payment-milestone CRUD + status lifecycle
+├── documents.ts    # Document tracker CRUD (contracts, briefs, invoices)
 ├── notes.ts        # Project/client notes
 ├── followups.ts    # Follow-up CRUD
 ├── context-builder.ts # Assemble a project's full picture for AI prompts
 ├── ai.ts           # AI: status summary, meeting prep, payment follow-up, risk scan
-├── linker.ts       # Link Gmail emails to clients/projects + morning section
+├── linker.ts       # Link Gmail emails + calendar events to clients/projects
 ├── whatsapp.ts     # Parse WhatsApp chat exports → notes + AI-extracted follow-ups
-└── commands.ts     # CLI verbs (client/project/deliverable/payment/followup/prep/risks/whatsapp)
+└── commands.ts     # CLI verbs (client/project/deliverable/payment/milestone/docs/followup/prep/risks/whatsapp)
 web/
 ├── index.html      # Web dashboard (live charts + panels)
 ├── clientops.html  # ClientOps view (projects, payments, follow-ups, clients)
@@ -656,6 +668,10 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.janjak.daemon.plist` 
 - [x] **Client Operations** (clients, projects, deliverables, payments, follow-ups — CLI)
 - [x] **ClientOps AI** (project summaries, meeting prep, payment follow-up drafts, risk scan)
 - [x] **ClientOps email linking** (`inbox --clientops`, `morning --clientops`)
+- [x] **ClientOps calendar linking** (today's events → clients/projects → meeting notes)
+- [x] **ClientOps milestones & documents** (payment milestones + contract/brief tracking)
+- [x] **ClientOps web actions** (inline Mark paid / Resolve follow-up buttons)
+- [x] **ClientOps notes → semantic memory** (project/client notes embedded via `ingest`)
 - [x] **ClientOps WhatsApp import** (chat export → notes + AI follow-ups)
 - [x] **ClientOps proactive alerts** (overdue payments, due follow-ups, at-risk projects)
 - [ ] Multi-device Context (iPhone/Watch location + motion signals)

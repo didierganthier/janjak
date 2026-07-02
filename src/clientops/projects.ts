@@ -173,6 +173,10 @@ export function setProjectNextAction(
   return updateProject(id, { nextAction, nextActionDueDate: dueDate ?? null });
 }
 
+export function setProjectRisk(id: number, riskLevel: RiskLevel): ClientProject | null {
+  return updateProject(id, { riskLevel });
+}
+
 export function deleteProject(id: number): boolean {
   ensureClientOpsSchema();
   const result = getDb().prepare("DELETE FROM client_projects WHERE id = ?").run(id);

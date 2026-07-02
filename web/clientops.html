@@ -98,6 +98,14 @@
     .tag.in_progress { background: rgba(124,92,252,.18); color: var(--accent); }
     .tag.paid, .tag.done { background: rgba(52,211,153,.15); color: var(--green); }
     .due { font-size: 13px; color: var(--text2); }
+
+    .co-btn {
+      margin-top: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
+      padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--bg3); color: var(--text); transition: background .15s, opacity .15s;
+    }
+    .co-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .co-btn:disabled { opacity: .5; cursor: default; }
     .due.over { color: var(--red); }
     .due.soon { color: var(--yellow); }
     .loading { text-align: center; color: var(--text2); padding: 60px; }
@@ -164,6 +172,7 @@
         <div class="right">
           <span class="tag ${p.overdue ? "overdue" : esc(p.status)}">${esc(p.overdue ? "overdue" : p.status.replace(/_/g, " "))}</span>
           ${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}
+          <div><button class="co-btn" onclick="coAction('payment', ${p.id}, 'paid', this)">Mark paid</button></div>
         </div>
       </div>`;
     }
@@ -176,7 +185,10 @@
           <div class="name">${esc(f.title)}</div>
           <div class="sub">${esc(who)}${f.channel ? " · " + esc(f.channel) : ""}</div>
         </div>
-        <div class="right">${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}</div>
+        <div class="right">
+          ${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}
+          <div><button class="co-btn" onclick="coAction('followup', ${f.id}, 'done', this)">Resolve</button></div>
+        </div>
       </div>`;
     }
 
@@ -193,6 +205,17 @@
     function section(title, icon, items, render) {
       const body = items.length ? items.map(render).join("") : `<div class="empty">Nothing here yet.</div>`;
       return `<div class="card"><div class="card-title">${icon} ${title}</div>${body}</div>`;
+    }
+
+    async function coAction(kind, id, action, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = "…"; }
+      try {
+        const res = await fetch(`/api/clientops/${kind}/${id}/${action}`, { method: "POST" });
+        if (!res.ok) throw new Error("request failed");
+        await load();
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = kind === "payment" ? "Mark paid" : "Resolve"; }
+      }
     }
 
     async function load() {
