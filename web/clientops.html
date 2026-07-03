@@ -6,132 +6,206 @@
   <title>Janjak — ClientOps</title>
   <style>
     :root {
-      --bg: #0a0a0f;
-      --bg2: #12121a;
-      --bg3: #1a1a28;
-      --border: #2a2a3a;
-      --text: #e0e0f0;
-      --text2: #8888aa;
-      --accent: #7c5cfc;
-      --cyan: #22d3ee;
-      --green: #34d399;
-      --yellow: #fbbf24;
-      --red: #f87171;
-      --orange: #fb923c;
-      --radius: 16px;
-      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --bg: #eef0ec;
+      --panel: #ffffff;
+      --panel2: #f6f7f4;
+      --ink: #1b241d;
+      --ink2: #6a746b;
+      --ink3: #99a29a;
+      --line: #e6e8e3;
+      --accent: #3f6152;
+      --accent-soft: #e5efe8;
+      --green: #4b8063;
+      --green-soft: #e3f1e7;
+      --red: #c1584f;
+      --red-soft: #f7e4e2;
+      --amber: #b8862f;
+      --amber-soft: #f6ecd6;
+      --blue: #4a6b8a;
+      --blue-soft: #e3ebf2;
+      --radius: 20px;
+      --radius-sm: 12px;
+      --shadow: 0 1px 2px rgba(27,36,29,.04), 0 8px 24px rgba(27,36,29,.05);
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: var(--bg); color: var(--text); min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+      background: var(--bg); color: var(--ink); min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
-    .header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 20px 32px; border-bottom: 1px solid var(--border);
-      background: var(--bg2); position: sticky; top: 0; z-index: 100;
-      backdrop-filter: blur(12px);
-    }
-    .header-left { display: flex; align-items: center; gap: 12px; }
-    .logo { font-size: 28px; }
-    .header h1 {
-      font-size: 20px; font-weight: 700;
-      background: linear-gradient(135deg, var(--accent), var(--cyan));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .nav { display: flex; gap: 8px; align-items: center; }
-    .nav a {
-      color: var(--text2); text-decoration: none; font-size: 14px;
-      padding: 8px 14px; border-radius: 10px; border: 1px solid transparent;
-      transition: all .15s;
-    }
-    .nav a:hover { color: var(--text); background: var(--bg3); }
-    .nav a.active { color: var(--text); border-color: var(--border); background: var(--bg3); }
+    .shell { display: flex; min-height: 100vh; }
 
-    .kpis {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 16px; padding: 24px 32px 0; max-width: 1400px; margin: 0 auto;
+    /* Sidebar */
+    .sidebar {
+      width: 84px; flex-shrink: 0; padding: 24px 0;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      position: sticky; top: 0; height: 100vh;
     }
-    .kpi {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 18px 20px;
+    .sidebar .brand {
+      width: 44px; height: 44px; border-radius: 14px;
+      background: var(--accent); color: #fff; display: grid; place-items: center;
+      font-size: 22px; margin-bottom: 18px;
     }
-    .kpi .value { font-size: 26px; font-weight: 700; }
-    .kpi .label {
-      font-size: 12px; color: var(--text2); text-transform: uppercase;
-      letter-spacing: 1px; margin-top: 4px;
+    .nav-btn {
+      width: 46px; height: 46px; border-radius: 14px; border: none; cursor: pointer;
+      display: grid; place-items: center; font-size: 19px; background: transparent;
+      color: var(--ink2); text-decoration: none; transition: all .15s;
     }
-    .kpi.warn .value { color: var(--red); }
+    .nav-btn:hover { background: var(--panel); color: var(--ink); }
+    .nav-btn.active { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
+    .nav-spacer { flex: 1; }
 
-    .grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-      gap: 20px; padding: 24px 32px; max-width: 1400px; margin: 0 auto;
+    /* Main */
+    .main { flex: 1; padding: 24px 32px 48px; max-width: 1500px; }
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px;
     }
+    .topbar h1 { font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
+    .topbar .subtitle { color: var(--ink2); font-size: 14px; margin-top: 3px; }
+    .topbar .links { display: flex; gap: 8px; align-items: center; }
+    .topbar .links a {
+      font-size: 14px; color: var(--ink2); text-decoration: none; padding: 9px 16px;
+      border-radius: 999px; background: var(--panel); box-shadow: var(--shadow); transition: all .15s;
+    }
+    .topbar .links a.active, .topbar .links a:hover { color: var(--accent); }
+    .topbar .links a.active { background: var(--accent); color: #fff; }
+
+    /* KPI tiles */
+    .tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 22px; }
+    .tile {
+      background: var(--panel); border-radius: var(--radius); padding: 18px 20px;
+      box-shadow: var(--shadow); min-height: 104px; display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .tile .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 17px; }
+    .tile .val { font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
+    .tile .lbl { font-size: 12px; color: var(--ink2); margin-top: 2px; }
+    .ic.a { background: var(--accent-soft); }
+    .ic.g { background: var(--green-soft); }
+    .ic.r { background: var(--red-soft); }
+    .ic.b { background: var(--blue-soft); }
+    .ic.m { background: var(--amber-soft); }
+    .tile.warn .val { color: var(--red); }
+
+    /* Grid */
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 20px; }
     .card {
-      background: var(--bg2); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 24px;
+      background: var(--panel); border-radius: var(--radius); padding: 22px 24px;
+      box-shadow: var(--shadow);
     }
-    .card.wide { grid-column: 1 / -1; }
+    .col-4 { grid-column: span 4; }
+    .col-6 { grid-column: span 6; }
+    .col-8 { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
     .card-title {
-      font-size: 13px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 1px; color: var(--text2); margin-bottom: 16px;
+      font-size: 15px; font-weight: 700; margin-bottom: 4px;
       display: flex; align-items: center; gap: 8px;
     }
+    .card-sub { font-size: 12.5px; color: var(--ink2); margin-bottom: 16px; }
+
+    /* Revenue bar */
+    .rev-hero { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 14px; }
+    .rev-hero .big { font-size: 32px; font-weight: 800; letter-spacing: -1px; }
+    .rev-hero .of { color: var(--ink2); font-size: 14px; }
+    .progress { height: 10px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
+    .progress > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--green), var(--accent)); transition: width .5s; }
+    .rev-legend { display: flex; justify-content: space-between; margin-top: 14px; gap: 12px; }
+    .rev-legend div { flex: 1; }
+    .rev-legend .k { font-size: 12px; color: var(--ink2); }
+    .rev-legend .v { font-size: 16px; font-weight: 700; margin-top: 2px; }
+
+    /* Rings */
+    .rings { display: flex; gap: 20px; align-items: center; }
+    .ring { position: relative; width: 96px; height: 96px; flex-shrink: 0; }
+    .ring svg { transform: rotate(-90deg); }
+    .ring .track { fill: none; stroke: var(--panel2); stroke-width: 11; }
+    .ring .fill { fill: none; stroke: var(--green); stroke-width: 11; stroke-linecap: round; transition: stroke-dashoffset .6s; }
+    .ring .pct { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 800; font-size: 20px; }
+    .ring-meta .k { font-size: 12.5px; color: var(--ink2); }
+    .ring-meta .v { font-size: 15px; font-weight: 700; margin-top: 2px; }
+    .ring-meta > div { margin-bottom: 10px; }
+
+    /* Rows */
     .row {
-      display: flex; align-items: flex-start; justify-content: space-between;
-      gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+      padding: 13px 0; border-bottom: 1px solid var(--line);
     }
     .row:last-child { border-bottom: none; }
     .row .main { min-width: 0; }
-    .row .name { font-weight: 600; }
-    .row .sub { color: var(--text2); font-size: 13px; margin-top: 3px; }
-    .row .right { text-align: right; white-space: nowrap; }
-    .empty { color: var(--text2); font-size: 14px; padding: 8px 0; }
+    .row .name { font-weight: 650; font-size: 14.5px; }
+    .row .sub { color: var(--ink2); font-size: 12.5px; margin-top: 3px; }
+    .row .right { text-align: right; white-space: nowrap; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+    .empty { color: var(--ink3); font-size: 13.5px; padding: 14px 0; text-align: center; }
 
     .tag {
-      display: inline-block; font-size: 11px; font-weight: 600;
-      padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
-      letter-spacing: .5px; background: var(--bg3); color: var(--text2);
+      display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 9px;
+      border-radius: 999px; text-transform: capitalize; background: var(--panel2); color: var(--ink2);
     }
-    .tag.high, .tag.urgent, .tag.overdue { background: rgba(248,113,113,.15); color: var(--red); }
-    .tag.elevated, .tag.due_soon { background: rgba(251,191,36,.15); color: var(--yellow); }
-    .tag.in_progress { background: rgba(124,92,252,.18); color: var(--accent); }
-    .tag.paid, .tag.done { background: rgba(52,211,153,.15); color: var(--green); }
-    .due { font-size: 13px; color: var(--text2); }
+    .tag.high, .tag.urgent, .tag.overdue, .tag.critical, .tag.elevated { background: var(--red-soft); color: var(--red); }
+    .tag.watch, .tag.due_soon, .tag.sent, .tag.reached { background: var(--amber-soft); color: var(--amber); }
+    .tag.in_progress, .tag.lead, .tag.invoiced, .tag.draft { background: var(--blue-soft); color: var(--blue); }
+    .tag.paid, .tag.done, .tag.healthy, .tag.signed, .tag.active { background: var(--green-soft); color: var(--green); }
+    .due { font-size: 12.5px; color: var(--ink2); }
+    .due.over { color: var(--red); font-weight: 650; }
+    .due.soon { color: var(--amber); font-weight: 650; }
 
-    .co-btn {
-      margin-top: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
-      padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
-      background: var(--bg3); color: var(--text); transition: background .15s, opacity .15s;
+    .btn {
+      font-size: 12px; font-weight: 650; cursor: pointer; padding: 5px 12px;
+      border-radius: 999px; border: 1px solid var(--line); background: var(--panel2);
+      color: var(--ink); transition: all .15s;
     }
-    .co-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .co-btn:disabled { opacity: .5; cursor: default; }
-    .due.over { color: var(--red); }
-    .due.soon { color: var(--yellow); }
-    .loading { text-align: center; color: var(--text2); padding: 60px; }
+    .btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn:disabled { opacity: .5; cursor: default; }
+
+    .doc-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .chip { font-size: 12px; padding: 6px 12px; border-radius: 999px; background: var(--panel2); color: var(--ink2); font-weight: 600; }
+    .chip b { color: var(--ink); }
+
+    .loading { text-align: center; color: var(--ink2); padding: 60px; }
+
+    @media (max-width: 1200px) {
+      .tiles { grid-template-columns: repeat(3, 1fr); }
+      .col-4, .col-6, .col-8 { grid-column: span 12; }
+    }
+    @media (max-width: 680px) {
+      .sidebar { display: none; }
+      .main { padding: 18px; }
+      .tiles { grid-template-columns: repeat(2, 1fr); }
+    }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-left">
-      <span class="logo">🧠</span>
-      <h1>Janjak · ClientOps</h1>
-    </div>
-    <nav class="nav">
-      <a href="/">Dashboard</a>
-      <a href="/clientops" class="active">ClientOps</a>
-    </nav>
-  </div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">🧠</div>
+      <a class="nav-btn" href="/" title="Dashboard">▚</a>
+      <a class="nav-btn active" href="/clientops" title="ClientOps">☰</a>
+      <div class="nav-spacer"></div>
+    </aside>
 
-  <div id="kpis" class="kpis"></div>
-  <div id="grid" class="grid">
-    <div class="loading">Loading…</div>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h1>Client Operations</h1>
+          <div class="subtitle" id="subtitle">Projects, revenue, milestones &amp; follow-ups</div>
+        </div>
+        <div class="links">
+          <a href="/">Dashboard</a>
+          <a href="/clientops" class="active">ClientOps</a>
+        </div>
+      </div>
+
+      <div id="tiles" class="tiles"></div>
+      <div id="grid" class="grid">
+        <div class="loading">Loading…</div>
+      </div>
+    </main>
   </div>
 
   <script>
     const esc = (s) => (s == null ? "" : String(s).replace(/[&<>"]/g, (c) => (
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]
     )));
+    const clean = (s) => esc(String(s ?? "").replace(/_/g, " "));
 
     function dueText(days, date) {
       if (date == null) return { text: "", cls: "" };
@@ -142,20 +216,39 @@
       return { text: "in " + days + "d", cls: days <= 3 ? "soon" : "" };
     }
 
-    function kpi(value, label, warn) {
-      return `<div class="kpi ${warn ? "warn" : ""}"><div class="value">${esc(value)}</div><div class="label">${esc(label)}</div></div>`;
+    function tile(icon, cls, val, label, warn) {
+      return `<div class="tile ${warn ? "warn" : ""}">
+        <div class="ic ${cls}">${icon}</div>
+        <div><div class="val">${esc(val)}</div><div class="lbl">${esc(label)}</div></div>
+      </div>`;
+    }
+
+    function ring(pct, color) {
+      const r = 42, c = 2 * Math.PI * r;
+      const off = c * (1 - Math.max(0, Math.min(100, pct)) / 100);
+      return `<div class="ring">
+        <svg width="96" height="96" viewBox="0 0 96 96">
+          <circle class="track" cx="48" cy="48" r="${r}"></circle>
+          <circle class="fill" cx="48" cy="48" r="${r}" stroke="${color}"
+            stroke-dasharray="${c}" stroke-dashoffset="${off}"></circle>
+        </svg>
+        <div class="pct">${pct}%</div>
+      </div>`;
     }
 
     function projectRow(p) {
       const d = dueText(p.nextActionDays, p.nextActionDueDate);
+      const risk = p.riskLevel && p.riskLevel !== "healthy" && p.riskLevel !== "normal" && p.riskLevel !== "low";
       return `<div class="row">
         <div class="main">
           <div class="name">${esc(p.name)}</div>
           <div class="sub">${esc(p.client || "unassigned")} · ${p.deliverables.done}/${p.deliverables.total} deliverables${p.nextAction ? " · next: " + esc(p.nextAction) : ""}</div>
         </div>
         <div class="right">
-          <span class="tag ${esc(p.status)}">${esc(p.status.replace(/_/g, " "))}</span>
-          ${p.riskLevel && p.riskLevel !== "normal" && p.riskLevel !== "low" ? `<span class="tag ${esc(p.riskLevel)}">${esc(p.riskLevel)}</span>` : ""}
+          <div>
+            <span class="tag ${clean(p.status)}">${clean(p.status)}</span>
+            ${risk ? `<span class="tag ${esc(p.riskLevel)}">${clean(p.riskLevel)}</span>` : ""}
+          </div>
           ${p.outstanding ? `<div class="sub">${esc(p.outstanding)} due</div>` : ""}
           ${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}
         </div>
@@ -170,9 +263,9 @@
           <div class="sub">${esc(p.project || "—")}</div>
         </div>
         <div class="right">
-          <span class="tag ${p.overdue ? "overdue" : esc(p.status)}">${esc(p.overdue ? "overdue" : p.status.replace(/_/g, " "))}</span>
+          <span class="tag ${p.overdue ? "overdue" : clean(p.status)}">${p.overdue ? "overdue" : clean(p.status)}</span>
           ${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}
-          <div><button class="co-btn" onclick="coAction('payment', ${p.id}, 'paid', this)">Mark paid</button></div>
+          <button class="btn" onclick="coAction('payment', ${p.id}, 'paid', this)">Mark paid</button>
         </div>
       </div>`;
     }
@@ -187,8 +280,32 @@
         </div>
         <div class="right">
           ${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}
-          <div><button class="co-btn" onclick="coAction('followup', ${f.id}, 'done', this)">Resolve</button></div>
+          <button class="btn" onclick="coAction('followup', ${f.id}, 'done', this)">Resolve</button>
         </div>
+      </div>`;
+    }
+
+    function milestoneRow(m) {
+      const d = dueText(m.days, m.dueDate);
+      return `<div class="row">
+        <div class="main">
+          <div class="name">${esc(m.title)}</div>
+          <div class="sub">${esc(m.project || "—")}${m.amount ? " · " + esc(m.amount) : ""}</div>
+        </div>
+        <div class="right">
+          <span class="tag ${clean(m.status)}">${clean(m.status)}</span>
+          ${d.text ? `<div class="due ${d.cls}">${esc(d.text)}</div>` : ""}
+        </div>
+      </div>`;
+    }
+
+    function docRow(dc) {
+      return `<div class="row">
+        <div class="main">
+          <div class="name">${esc(dc.title)}</div>
+          <div class="sub">${esc(dc.project || dc.type || "—")}${dc.type && dc.project ? " · " + esc(dc.type) : ""}</div>
+        </div>
+        <div class="right"><span class="tag ${clean(dc.status)}">${clean(dc.status)}</span></div>
       </div>`;
     }
 
@@ -198,13 +315,17 @@
           <div class="name">${esc(c.name)}${c.organization ? " · " + esc(c.organization) : ""}</div>
           <div class="sub">${c.projectCount} project${c.projectCount === 1 ? "" : "s"}${c.openFollowups ? " · " + c.openFollowups + " follow-up" + (c.openFollowups === 1 ? "" : "s") : ""}${c.preferredChannel ? " · " + esc(c.preferredChannel) : ""}</div>
         </div>
-        <div class="right"><span class="tag ${esc(c.status)}">${esc(c.status)}</span></div>
+        <div class="right"><span class="tag ${clean(c.status)}">${clean(c.status)}</span></div>
       </div>`;
     }
 
-    function section(title, icon, items, render) {
-      const body = items.length ? items.map(render).join("") : `<div class="empty">Nothing here yet.</div>`;
-      return `<div class="card"><div class="card-title">${icon} ${title}</div>${body}</div>`;
+    function card(cls, title, sub, body, empty) {
+      const inner = (body && body.trim()) ? body : `<div class="empty">${esc(empty || "Nothing here yet.")}</div>`;
+      return `<div class="card ${cls}">
+        <div class="card-title">${title}</div>
+        ${sub ? `<div class="card-sub">${sub}</div>` : ""}
+        ${inner}
+      </div>`;
     }
 
     async function coAction(kind, id, action, btn) {
@@ -223,20 +344,70 @@
         const res = await fetch("/api/clientops");
         const data = await res.json();
         const t = data.totals || {};
-        document.getElementById("kpis").innerHTML =
-          kpi(t.openProjects ?? 0, "Open projects") +
-          kpi(t.clients ?? 0, "Clients") +
-          kpi(t.outstanding ?? "$0", "Outstanding") +
-          kpi(t.overduePayments ?? 0, "Overdue", (t.overduePayments ?? 0) > 0) +
-          kpi(t.openFollowups ?? 0, "Follow-ups");
+        const met = data.metrics || {};
+        const ms = data.milestones || {};
+        const docs = data.documents || {};
+
+        document.getElementById("subtitle").textContent =
+          `${t.openProjects ?? 0} open projects · ${met.collected ?? "$0"} collected · ${t.openFollowups ?? 0} open follow-ups`;
+
+        document.getElementById("tiles").innerHTML =
+          tile("📁", "a", t.openProjects ?? 0, "Open projects") +
+          tile("👥", "b", t.clients ?? 0, "Clients") +
+          tile("💵", "g", met.collected ?? "$0", "Collected") +
+          tile("⏳", "m", t.outstanding ?? "$0", "Outstanding") +
+          tile("⚠️", "r", t.overduePayments ?? 0, "Overdue", (t.overduePayments ?? 0) > 0) +
+          tile("🔔", "a", t.openFollowups ?? 0, "Follow-ups");
+
+        const del = met.deliverables || { done: 0, total: 0 };
+        const revenueCard = `<div class="card col-4">
+          <div class="card-title">💰 Revenue</div>
+          <div class="card-sub">Collected vs billed to date</div>
+          <div class="rev-hero"><span class="big">${esc(met.collected ?? "$0")}</span><span class="of">of ${esc(met.billed ?? "$0")}</span></div>
+          <div class="progress"><span style="width:${met.collectedPct ?? 0}%"></span></div>
+          <div class="rev-legend">
+            <div><div class="k">Collected</div><div class="v" style="color:var(--green)">${met.collectedPct ?? 0}%</div></div>
+            <div><div class="k">Outstanding</div><div class="v">${esc(met.outstanding ?? "$0")}</div></div>
+          </div>
+        </div>`;
+
+        const progressCard = `<div class="card col-4">
+          <div class="card-title">📈 Delivery &amp; Milestones</div>
+          <div class="card-sub">Completion across active work</div>
+          <div class="rings">
+            ${ring(met.deliverablePct ?? 0, "var(--green)")}
+            <div class="ring-meta">
+              <div><div class="k">Deliverables done</div><div class="v">${del.done}/${del.total}</div></div>
+              <div><div class="k">Milestones settled</div><div class="v">${ms.paid ?? 0}/${ms.total ?? 0}${ms.settled ? " · " + esc(ms.settled) : ""}</div></div>
+            </div>
+          </div>
+        </div>`;
+
+        const docChips = `<div class="doc-chips">
+          <span class="chip">Draft <b>${docs.byStatus?.draft ?? 0}</b></span>
+          <span class="chip">Sent <b>${docs.byStatus?.sent ?? 0}</b></span>
+          <span class="chip">Signed <b>${docs.byStatus?.signed ?? 0}</b></span>
+          <span class="chip">Archived <b>${docs.byStatus?.archived ?? 0}</b></span>
+        </div>`;
+        const docsCard = `<div class="card col-4">
+          <div class="card-title">📄 Documents <span style="color:var(--ink3);font-weight:600">(${docs.total ?? 0})</span></div>
+          <div class="card-sub">Contracts, briefs &amp; invoices</div>
+          ${docChips}
+          ${(docs.recent || []).length ? (docs.recent).map(docRow).join("") : '<div class="empty">No documents tracked.</div>'}
+        </div>`;
 
         document.getElementById("grid").innerHTML =
-          `<div class="card wide"><div class="card-title">📁 Projects</div>${
-            (data.projects || []).length ? data.projects.map(projectRow).join("") : '<div class="empty">No open projects.</div>'
-          }</div>` +
-          section("Outstanding payments", "💰", data.payments || [], paymentRow) +
-          section("Follow-ups", "🔔", data.followups || [], followupRow) +
-          section("Clients", "👤", data.clients || [], clientRow);
+          revenueCard + progressCard + docsCard +
+          card("col-8", "📁 Projects", null,
+            (data.projects || []).map(projectRow).join(""), "No open projects.") +
+          card("col-4", "🎯 Upcoming milestones", null,
+            (ms.upcoming || []).map(milestoneRow).join(""), "No upcoming milestones.") +
+          card("col-6", "💳 Outstanding payments", null,
+            (data.payments || []).map(paymentRow).join(""), "Nothing outstanding.") +
+          card("col-6", "🔔 Follow-ups", null,
+            (data.followups || []).map(followupRow).join(""), "No open follow-ups.") +
+          card("col-12", "👤 Clients", null,
+            (data.clients || []).map(clientRow).join(""), "No clients yet.");
       } catch (e) {
         document.getElementById("grid").innerHTML = `<div class="loading">Could not load ClientOps data.</div>`;
       }

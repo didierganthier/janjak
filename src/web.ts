@@ -26,6 +26,8 @@ import { listProjects, getProjectById } from "./clientops/projects.js";
 import { listDeliverables } from "./clientops/deliverables.js";
 import { listPayments, listOutstandingPayments, markPaymentPaid } from "./clientops/payments.js";
 import { listFollowups, setFollowupStatus } from "./clientops/followups.js";
+import { listMilestones } from "./clientops/milestones.js";
+import { listDocuments } from "./clientops/documents.js";
 import { formatMoney, isOverdue, daysUntil } from "./clientops/util.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -190,11 +192,98 @@ function clientOpsSnapshot() {
 
   const outstandingTotal = outstanding.reduce((sum, p) => sum + p.amount, 0);
 
+  // ── Revenue metrics (real payment data) ──
+  const allPayments = listPayments();
+  const primaryCurrency =
+    allPayments[0]?.currency ?? projects[0]?.budgetCurrency ?? "USD";
+  const collectedAmount = allPayments
+    .filter((p) => p.status === "paid")
+    .reduce((sum, p) => sum + p.amount, 0);
+  const billedAmount = allPayments
+    .filter((p) => p.status !== "cancelled")
+    .reduce((sum, p) => sum + p.amount, 0);
+  const collectedPct = billedAmount > 0 ? Math.round((collectedAmount / billedAmount) * 100) : 0;
+
+  // ── Deliverable completion (aggregate) ──
+  const delDone = projectsOut.reduce((s, p) => s + p.deliverables.done, 0);
+  const delTotal = projectsOut.reduce((s, p) => s + p.deliverables.total, 0);
+
+  // ── Milestones across all projects ──
+  let msTotal = 0;
+  let msPaid = 0;
+  let msSettledAmount = 0;
+  let msValueAmount = 0;
+  const upcomingMilestones: Array<{
+    id: number;
+    title: string;
+    project: string | null;
+    amount: string | null;
+    status: string;
+    dueDate: string | null;
+    days: number | null;
+  }> = [];
+  for (const p of projects) {
+    for (const m of listMilestones(p.id)) {
+      msTotal++;
+      if (m.amount != null) msValueAmount += m.amount;
+      if (m.status === "paid") {
+        msPaid++;
+        if (m.amount != null) msSettledAmount += m.amount;
+      } else {
+        upcomingMilestones.push({
+          id: m.id,
+          title: m.title,
+          project: p.name,
+          amount: m.amount != null ? formatMoney(m.amount, m.currency) : null,
+          status: m.status,
+          dueDate: m.dueDate,
+          days: daysUntil(m.dueDate),
+        });
+      }
+    }
+  }
+  upcomingMilestones.sort((a, b) => (a.days ?? 9999) - (b.days ?? 9999));
+
+  // ── Documents ──
+  const docs = listDocuments();
+  const docStatusCount = { draft: 0, sent: 0, signed: 0, archived: 0 } as Record<string, number>;
+  for (const d of docs) {
+    if (d.status in docStatusCount) docStatusCount[d.status]++;
+  }
+  const documentsOut = docs.slice(0, 8).map((d) => ({
+    id: d.id,
+    title: d.title,
+    type: d.documentType,
+    status: d.status,
+    project: d.projectId != null ? getProjectById(d.projectId)?.name ?? null : null,
+  }));
+
   return {
     clients: clientsOut,
     projects: projectsOut,
     payments: paymentsOut,
     followups: followupsOut,
+    milestones: {
+      total: msTotal,
+      paid: msPaid,
+      progressPct: msTotal > 0 ? Math.round((msPaid / msTotal) * 100) : 0,
+      value: msValueAmount > 0 ? formatMoney(msValueAmount, primaryCurrency) : null,
+      settled: msSettledAmount > 0 ? formatMoney(msSettledAmount, primaryCurrency) : null,
+      upcoming: upcomingMilestones.slice(0, 6),
+    },
+    documents: {
+      total: docs.length,
+      byStatus: docStatusCount,
+      recent: documentsOut,
+    },
+    metrics: {
+      collected: formatMoney(collectedAmount, primaryCurrency),
+      billed: formatMoney(billedAmount, primaryCurrency),
+      outstanding: formatMoney(outstandingTotal, primaryCurrency),
+      collectedPct,
+      deliverables: { done: delDone, total: delTotal },
+      deliverablePct: delTotal > 0 ? Math.round((delDone / delTotal) * 100) : 0,
+    },
     totals: {
       clients: clientsOut.length,
       openProjects: projectsOut.length,

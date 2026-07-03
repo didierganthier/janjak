@@ -6,64 +6,81 @@
   <title>Janjak — Your Ambient Intelligence</title>
   <style>
     :root {
-      --bg: #0a0a0f;
-      --bg2: #12121a;
-      --bg3: #1a1a28;
-      --border: #2a2a3a;
-      --text: #e0e0f0;
-      --text2: #8888aa;
-      --accent: #7c5cfc;
-      --accent2: #a78bfa;
-      --green: #34d399;
-      --yellow: #fbbf24;
-      --red: #f87171;
-      --cyan: #22d3ee;
-      --pink: #f472b6;
-      --orange: #fb923c;
-      --radius: 16px;
-      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --bg: #eef0ec;
+      --bg2: #ffffff;
+      --bg3: #f6f7f4;
+      --border: #e6e8e3;
+      --text: #1b241d;
+      --text2: #6a746b;
+      --accent: #3f6152;
+      --accent2: #4b8063;
+      --green: #4b8063;
+      --yellow: #b8862f;
+      --red: #c1584f;
+      --cyan: #4a6b8a;
+      --pink: #a8688a;
+      --orange: #c07a3f;
+      --radius: 20px;
+      --shadow: 0 1px 2px rgba(27,36,29,.04), 0 10px 28px rgba(27,36,29,.07);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
+
+    /* ─── Sidebar shell ─── */
+    .shell { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 84px; flex-shrink: 0; padding: 24px 0;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar .brand {
+      width: 44px; height: 44px; border-radius: 14px;
+      background: var(--accent); color: #fff; display: grid; place-items: center;
+      font-size: 22px; margin-bottom: 18px;
+    }
+    .sidebar .nav-btn {
+      width: 46px; height: 46px; border-radius: 14px; cursor: pointer;
+      display: grid; place-items: center; font-size: 19px; background: transparent;
+      color: var(--text2); text-decoration: none; transition: all .15s;
+    }
+    .sidebar .nav-btn:hover { background: var(--bg2); color: var(--text); }
+    .sidebar .nav-btn.active { background: var(--bg2); color: var(--accent); box-shadow: var(--shadow); }
+    .sidebar .nav-spacer { flex: 1; }
+    .app-main { flex: 1; min-width: 0; }
 
     /* ─── Header ─── */
     .header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 20px 32px;
-      border-bottom: 1px solid var(--border);
-      background: var(--bg2);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      backdrop-filter: blur(12px);
+      padding: 24px 32px 8px;
+      background: transparent;
     }
     .header-left {
       display: flex;
       align-items: center;
       gap: 12px;
     }
-    .logo { font-size: 28px; }
+    .logo { font-size: 26px; }
     .header h1 {
-      font-size: 20px;
+      font-size: 26px;
       font-weight: 700;
-      background: linear-gradient(135deg, var(--accent), var(--cyan));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      letter-spacing: -.5px;
+      color: var(--text);
     }
     .header-right {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
     }
     .live-dot {
       width: 8px; height: 8px;
@@ -86,22 +103,22 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
       gap: 20px;
-      padding: 24px 32px;
-      max-width: 1400px;
-      margin: 0 auto;
+      padding: 16px 32px 40px;
+      max-width: 1500px;
     }
 
     /* ─── Cards ─── */
     .card {
       background: var(--bg2);
-      border: 1px solid var(--border);
+      border: none;
       border-radius: var(--radius);
       padding: 24px;
+      box-shadow: var(--shadow);
       transition: transform 0.2s, box-shadow 0.2s;
     }
     .card:hover {
       transform: translateY(-2px);
-      box-shadow: var(--shadow);
+      box-shadow: 0 2px 4px rgba(27,36,29,.05), 0 16px 36px rgba(27,36,29,.10);
     }
     .card-header {
       display: flex;
@@ -111,7 +128,7 @@
     }
     .card-title {
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 1px;
       color: var(--text2);
@@ -292,22 +309,22 @@
       color: var(--text2);
       flex-shrink: 0;
     }
-    .task-status.in-progress { background: rgba(124,92,252,0.2); color: var(--accent2); }
-    .task-status.done { background: rgba(52,211,153,0.2); color: var(--green); }
+    .task-status.in-progress { background: rgba(74,107,138,0.15); color: var(--cyan); }
+    .task-status.done { background: rgba(75,128,99,0.18); color: var(--green); }
     .task-empty { color: var(--text2); font-size: 14px; padding: 12px 0; }
     .task-reply-btn {
       font-size: 11px;
       padding: 3px 8px;
       border-radius: 6px;
-      background: rgba(124,92,252,0.15);
-      color: var(--accent2);
+      background: rgba(63,97,82,0.12);
+      color: var(--accent);
       border: none;
       cursor: pointer;
       flex-shrink: 0;
       font-weight: 600;
       transition: background 0.2s;
     }
-    .task-reply-btn:hover { background: rgba(124,92,252,0.3); }
+    .task-reply-btn:hover { background: rgba(63,97,82,0.24); }
 
     /* ─── Reply Modal ─── */
     .modal-overlay {
@@ -345,7 +362,7 @@
       font-size: 14px; font-weight: 600; cursor: pointer;
     }
     .modal-btn.primary { background: var(--accent); color: #fff; }
-    .modal-btn.primary:hover { background: #6b4fe0; }
+    .modal-btn.primary:hover { background: var(--accent2); }
     .modal-btn.secondary { background: var(--bg3); color: var(--text); border: 1px solid var(--border); }
     .modal-btn.secondary:hover { background: var(--border); }
     .modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -357,7 +374,7 @@
       font-weight: 600; border: 1px solid var(--border);
       background: var(--bg3); color: var(--text2); cursor: pointer;
     }
-    .tone-btn.active { background: rgba(124,92,252,0.2); color: var(--accent2); border-color: var(--accent); }
+    .tone-btn.active { background: rgba(63,97,82,0.14); color: var(--accent); border-color: var(--accent); }
     .modal-loading { color: var(--text2); font-size: 14px; padding: 20px 0; text-align: center; }
 
     /* ─── Quick Actions ─── */
@@ -536,11 +553,11 @@
     /* ─── Nudge ─── */
     .nudge-box {
       padding: 14px 16px;
-      background: rgba(124,92,252,0.1);
-      border: 1px solid rgba(124,92,252,0.3);
+      background: rgba(63,97,82,0.09);
+      border: 1px solid rgba(63,97,82,0.22);
       border-radius: 10px;
       font-size: 14px;
-      color: var(--accent2);
+      color: var(--accent);
     }
 
     /* ─── Proactive Alerts ─── */
@@ -569,9 +586,9 @@
       color: var(--yellow);
     }
     .alert-item.medium {
-      background: rgba(124,92,252,0.1);
-      border: 1px solid rgba(124,92,252,0.25);
-      color: var(--accent2);
+      background: rgba(63,97,82,0.09);
+      border: 1px solid rgba(63,97,82,0.2);
+      color: var(--accent);
     }
     .alert-item.low {
       background: rgba(52,211,153,0.08);
@@ -644,22 +661,31 @@
 </head>
 <body>
 
-  <!-- Header -->
-  <header class="header">
-    <div class="header-left">
-      <span class="logo">🧠</span>
-      <h1>Janjak</h1>
-      <div class="integrations" id="integrations"></div>
-    </div>
-    <div class="header-right">
-      <a href="/clientops" style="color:var(--text2);text-decoration:none;font-size:14px;padding:8px 14px;border:1px solid var(--border);border-radius:10px;">ClientOps →</a>
-      <div class="live-dot"></div>
-      <span class="time-display" id="clock"></span>
-    </div>
-  </header>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">🧠</div>
+      <a class="nav-btn active" href="/" title="Dashboard">▚</a>
+      <a class="nav-btn" href="/clientops" title="ClientOps">☰</a>
+      <div class="nav-spacer"></div>
+    </aside>
 
-  <!-- Dashboard Grid -->
-  <main class="dashboard" id="dashboard">
+    <div class="app-main">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <span class="logo">🧠</span>
+        <h1>Janjak</h1>
+        <div class="integrations" id="integrations"></div>
+      </div>
+      <div class="header-right">
+        <a href="/clientops" style="color:var(--accent);text-decoration:none;font-size:14px;font-weight:600;padding:9px 16px;background:var(--bg2);box-shadow:var(--shadow);border-radius:999px;">ClientOps →</a>
+        <div class="live-dot"></div>
+        <span class="time-display" id="clock"></span>
+      </div>
+    </header>
+
+    <!-- Dashboard Grid -->
+    <main class="dashboard" id="dashboard">
 
     <!-- Status -->
     <div class="card" id="status-card">
@@ -829,6 +855,8 @@
     </div>
 
   </main>
+    </div>
+  </div>
 
   <!-- Reply Modal -->
   <div class="modal-overlay" id="reply-modal" onclick="if(event.target===this)closeReplyModal()">
