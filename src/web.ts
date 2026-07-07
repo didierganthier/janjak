@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { poll, getStatus, getNudge, enterFocusMode, enterBreakMode, exitFocusMode } from "./engine.js";
 import { runAgent } from "./agent/agent.js";
+import { makePendingConfirm, executePending, getPending, clearPending, isAffirmative, isNegative } from "./agent/pending.js";
 import { getProactiveAlerts } from "./proactive.js";
 import { getTaskById, generateReply } from "./reply.js";
 import { getTodayStats, getTasks, getTodayProjectTime, updateTaskStatus } from "./db.js";
@@ -370,7 +371,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   // Ask Janjak — natural-language command from the dashboard (voice or typed).
-  // Runs the agentic brain; confirm-tier tools are blocked by default (safe).
+  // Runs the agentic brain. Confirm-tier tools (calendar event, email draft,
+  // file write) are parked and require a follow-up "yes" from the user.
   if (path === "/api/ask" && method === "POST") {
     const body = await readBody(req);
     const text = typeof body.text === "string" ? body.text.trim() : "";
@@ -387,8 +389,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
           .slice(-8)
       : [];
     try {
-      const reply = await runAgent(text, { history });
-      json(res, { ok: true, reply });
+      const KEY = "web";
+      const parked = getPending(KEY);
+      let reply: string;
+      if (parked && isAffirmative(text)) {
+        reply = (await executePending(KEY)) ?? "There was nothing to confirm.";
+      } else if (parked && isNegative(text)) {
+        clearPending(KEY);
+        reply = `Okay, I won't ${parked.description}.`;
+      } else {
+        reply = await runAgent(text, { history, confirm: makePendingConfirm(KEY) });
+        const pending = getPending(KEY);
+        if (pending) {
+          reply = `Just to confirm — you want me to ${pending.description}? Reply “yes” to go ahead or “no” to cancel.`;
+        }
+      }
+      const pendingNow = getPending(KEY);
+      json(res, { ok: true, reply, pendingConfirmation: pendingNow?.description ?? null });
     } catch (err) {
       json(res, { error: (err as Error).message }, 500);
     }

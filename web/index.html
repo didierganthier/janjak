@@ -115,6 +115,17 @@
     .a-icon-btn.send:hover { background: var(--accent2); }
     .a-speak-toggle { font-size: 12px; color: var(--text2); cursor: pointer; user-select: none; padding: 0 4px; }
     .a-speak-toggle.on { color: var(--accent); font-weight: 600; }
+    .a-clear { font-size: 12px; color: var(--text2); cursor: pointer; user-select: none; padding: 0 4px; }
+    .a-clear:hover { color: var(--red); }
+    .a-confirm-chips { display: flex; gap: 8px; align-self: flex-start; }
+    .a-chip {
+      border: none; cursor: pointer; border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600;
+      font-family: inherit;
+    }
+    .a-chip.yes { background: var(--accent); color: #fff; }
+    .a-chip.yes:hover { background: var(--accent2); }
+    .a-chip.no { background: var(--bg3); color: var(--text2); }
+    .a-chip.no:hover { background: var(--border); }
     .app-main { flex: 1; min-width: 0; }
 
     /* ─── Header ─── */
@@ -385,6 +396,15 @@
       transition: background 0.2s;
     }
     .task-reply-btn:hover { background: rgba(63,97,82,0.24); }
+    .task-icon-btn {
+      width: 24px; height: 24px; border-radius: 7px; border: none; cursor: pointer;
+      flex-shrink: 0; font-size: 12px; font-weight: 700; line-height: 1;
+      display: grid; place-items: center; transition: background 0.2s;
+    }
+    .task-icon-btn.done { background: rgba(75,128,99,0.14); color: var(--green); }
+    .task-icon-btn.done:hover { background: rgba(75,128,99,0.28); }
+    .task-icon-btn.dismiss { background: rgba(193,88,79,0.12); color: var(--red); }
+    .task-icon-btn.dismiss:hover { background: rgba(193,88,79,0.26); }
 
     /* ─── Reply Modal ─── */
     .modal-overlay {
@@ -949,6 +969,7 @@
         <div class="a-sub" id="assistant-sub">Type or tap the mic to talk</div>
       </div>
       <span class="a-speak-toggle on" id="a-speak-toggle" onclick="toggleSpeak()" title="Speak replies aloud">🔊 Speak</span>
+      <span class="a-clear" onclick="clearChat()" title="Clear conversation">🗑</span>
       <button class="a-close" onclick="toggleAssistant(false)" title="Close">×</button>
     </div>
     <div class="assistant-log" id="assistant-log">
@@ -1116,10 +1137,14 @@
           const nextStatus = t.status === "pending" ? "in-progress" : t.status === "in-progress" ? "done" : null;
           const click = nextStatus ? ` onclick="updateTask(${t.id},'${nextStatus}')"` : "";
           const replyBtn = t.person ? `<button class="task-reply-btn" onclick="event.stopPropagation(); openReplyModal(${t.id})" title="Draft reply">✉️ Reply</button>` : "";
+          const doneBtn = t.status !== "done" ? `<button class="task-icon-btn done" onclick="event.stopPropagation(); updateTask(${t.id},'done')" title="Mark done">✓</button>` : "";
+          const dismissBtn = `<button class="task-icon-btn dismiss" onclick="event.stopPropagation(); updateTask(${t.id},'dismissed')" title="Dismiss">✕</button>`;
           return `<div class="task-item"${click}>
             <div class="task-priority ${t.priority}"></div>
             <div class="task-title">${esc(t.title)}</div>
             ${replyBtn}
+            ${doneBtn}
+            ${dismissBtn}
             <div class="task-status ${t.status}">${t.status}</div>
           </div>`;
         }).join("");
@@ -1356,17 +1381,44 @@
     }
 
     // ─── Voice Assistant ───
+    const CHAT_KEY = "janjak_chat_v1";
     let assistantHistory = [];
     let speakReplies = true;
     let recognizing = false;
     let recognition = null;
+    let chatRestored = false;
+
+    function saveChat() {
+      try { localStorage.setItem(CHAT_KEY, JSON.stringify(assistantHistory)); } catch {}
+    }
+
+    function clearChat() {
+      assistantHistory = [];
+      try { localStorage.removeItem(CHAT_KEY); } catch {}
+      const log = document.getElementById("assistant-log");
+      log.innerHTML = '<div class="a-empty" id="assistant-empty">' +
+        'Try: <b>"How\'s my focus today?"</b>, <b>"Start a pomodoro"</b>, ' +
+        '<b>"Add a task to email the client"</b>, or <b>"What\'s on my calendar?"</b></div>';
+    }
+
+    function restoreChat() {
+      if (chatRestored) return;
+      chatRestored = true;
+      try { assistantHistory = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]"); } catch { assistantHistory = []; }
+      if (!Array.isArray(assistantHistory)) assistantHistory = [];
+      if (assistantHistory.length) {
+        const empty = document.getElementById("assistant-empty");
+        if (empty) empty.remove();
+        for (const m of assistantHistory) addMsg(m.role === "user" ? "user" : "bot", m.content);
+      }
+    }
 
     function toggleAssistant(force) {
       const panel = document.getElementById("assistant-panel");
       const open = force === undefined ? !panel.classList.contains("show") : force;
       panel.classList.toggle("show", open);
       document.getElementById("nav-assistant").classList.toggle("active", open);
-      if (open) setTimeout(() => document.getElementById("a-input").focus(), 50);
+      if (open) { restoreChat(); setTimeout(() => document.getElementById("a-input").focus(), 50); }
       else stopListen();
     }
 
@@ -1398,6 +1450,19 @@
       window.speechSynthesis.speak(u);
     }
 
+    function showConfirmChips() {
+      const log = document.getElementById("assistant-log");
+      const wrap = document.createElement("div");
+      wrap.className = "a-confirm-chips";
+      wrap.innerHTML =
+        '<button class="a-chip yes">✓ Yes, do it</button>' +
+        '<button class="a-chip no">✗ Cancel</button>';
+      wrap.querySelector(".yes").onclick = () => { wrap.remove(); sendAssistant("yes"); };
+      wrap.querySelector(".no").onclick = () => { wrap.remove(); sendAssistant("no"); };
+      log.appendChild(wrap);
+      log.scrollTop = log.scrollHeight;
+    }
+
     async function sendAssistant(preset) {
       const input = document.getElementById("a-input");
       const text = (preset ?? input.value).trim();
@@ -1420,6 +1485,8 @@
         assistantHistory.push({ role: "user", content: text });
         assistantHistory.push({ role: "assistant", content: reply });
         if (assistantHistory.length > 16) assistantHistory = assistantHistory.slice(-16);
+        saveChat();
+        if (data.pendingConfirmation) showConfirmChips();
         speak(reply);
         setTimeout(refresh, 400); // pick up any state changes the agent made
       } catch (e) {
