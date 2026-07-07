@@ -11,7 +11,7 @@ import { join, isAbsolute, resolve, sep } from "node:path";
 import { writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
-import { getTasks } from "../db.js";
+import { getTasks, updateTaskStatus } from "../db.js";
 import { getTodayScore } from "../score.js";
 import { getCalendarSummary, createCalendarEvent } from "../calendar.js";
 import { createTaskFromText, formatCreatedTask } from "../nl-tasks.js";
@@ -149,7 +149,7 @@ const tools: AgentTool[] = [
       const tasks = getTasks();
       if (tasks.length === 0) return "No open tasks.";
       return tasks
-        .slice(0, 20)
+        .slice(0, 50)
         .map((t) => `#${t.id} [${t.priority}] ${t.title}${t.deadline ? ` (due ${t.deadline})` : ""} — ${t.status}`)
         .join("\n");
     },
@@ -161,7 +161,7 @@ const tools: AgentTool[] = [
       function: {
         name: "create_task",
         description:
-          "Create a task or reminder from natural language. Parses title, priority, deadline and (if a deadline is present) adds it to Google Calendar. Use for 'remind me to…', 'I need to…', 'add a task…'.",
+          "Create a BRAND-NEW task or reminder from natural language. Parses title, priority, deadline and (if a deadline is present) adds it to Google Calendar. Use ONLY for 'remind me to…', 'I need to…', 'add a task…'. Do NOT use this to mark, complete, finish, remove, or delete an EXISTING task — use update_task_status for that. Never create a task like 'Complete X' to represent finishing task X.",
         parameters: {
           type: "object",
           properties: {
@@ -180,6 +180,53 @@ const tools: AgentTool[] = [
       const task = await createTaskFromText(text);
       if (!task) return "Could not parse a task from that text.";
       return `Created task:\n${formatCreatedTask(task)}`;
+    },
+  },
+
+  {
+    schema: {
+      type: "function",
+      function: {
+        name: "update_task_status",
+        description:
+          "Change the status of one or all EXISTING tasks. This is the ONLY correct way to mark a task done/completed/finished, or to dismiss/remove/delete a task. Call list_tasks first to get task IDs. Pass id='all' to apply the status to every open task at once. Do NOT create a new task to represent completing an existing one.",
+        parameters: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "The task number to update (e.g. '52'), or 'all' to update every open task.",
+            },
+            status: {
+              type: "string",
+              enum: ["done", "dismissed", "in-progress", "pending"],
+              description: "New status. Use 'done' to complete/finish, 'dismissed' to remove/delete.",
+            },
+          },
+          required: ["id", "status"],
+        },
+      },
+    },
+    handler: async (args) => {
+      const idArg = (str(args, "id") ?? "").trim().toLowerCase();
+      const status = (str(args, "status") ?? "").trim() as "done" | "dismissed" | "in-progress" | "pending";
+      if (!["done", "dismissed", "in-progress", "pending"].includes(status)) {
+        return "ERROR: status must be one of done, dismissed, in-progress, pending.";
+      }
+      if (idArg === "all") {
+        const open = getTasks().filter((t) => typeof t.id === "number");
+        if (open.length === 0) return "No open tasks to update.";
+        for (const t of open) updateTaskStatus(t.id!, status);
+        const verb = status === "done" ? "completed" : status === "dismissed" ? "removed" : `set to ${status}`;
+        return `Marked all ${open.length} open task(s) as ${verb}: ${open.map((t) => `#${t.id}`).join(", ")}.`;
+      }
+      const id = parseInt(idArg, 10);
+      if (isNaN(id)) return "ERROR: id must be a task number or 'all'.";
+      const task = getTasks().find((t) => t.id === id);
+      if (!task) return `No open task with id #${id}. Call list_tasks to see current tasks.`;
+      updateTaskStatus(id, status);
+      const verb = status === "done" ? "completed" : status === "dismissed" ? "removed" : `set to ${status}`;
+      return `Task #${id} "${task.title}" ${verb}.`;
     },
   },
 
