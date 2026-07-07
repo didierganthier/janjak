@@ -8,6 +8,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { poll, getStatus, getNudge, enterFocusMode, enterBreakMode, exitFocusMode } from "./engine.js";
+import { runAgent } from "./agent/agent.js";
 import { getProactiveAlerts } from "./proactive.js";
 import { getTaskById, generateReply } from "./reply.js";
 import { getTodayStats, getTasks, getTodayProjectTime, updateTaskStatus } from "./db.js";
@@ -365,6 +366,32 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
   if (path === "/api/music/resume" && method === "POST") {
     await resumeMusic();
     json(res, { ok: true });
+    return;
+  }
+
+  // Ask Janjak — natural-language command from the dashboard (voice or typed).
+  // Runs the agentic brain; confirm-tier tools are blocked by default (safe).
+  if (path === "/api/ask" && method === "POST") {
+    const body = await readBody(req);
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (!text) {
+      json(res, { error: "Empty request" }, 400);
+      return;
+    }
+    const history = Array.isArray(body.history)
+      ? (body.history as unknown[])
+          .filter((t): t is { role: "user" | "assistant"; content: string } =>
+            !!t && typeof t === "object" &&
+            (( t as { role?: unknown }).role === "user" || (t as { role?: unknown }).role === "assistant") &&
+            typeof (t as { content?: unknown }).content === "string")
+          .slice(-8)
+      : [];
+    try {
+      const reply = await runAgent(text, { history });
+      json(res, { ok: true, reply });
+    } catch (err) {
+      json(res, { error: (err as Error).message }, 500);
+    }
     return;
   }
 

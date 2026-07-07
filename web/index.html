@@ -55,6 +55,66 @@
     .sidebar .nav-btn:hover { background: var(--bg2); color: var(--text); }
     .sidebar .nav-btn.active { background: var(--bg2); color: var(--accent); box-shadow: var(--shadow); }
     .sidebar .nav-spacer { flex: 1; }
+
+    /* ─── Voice Assistant ─── */
+    .nav-btn#nav-assistant.listening {
+      background: var(--red); color: #fff; box-shadow: 0 0 0 0 rgba(193,88,79,.5);
+      animation: pulse 1.4s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(193,88,79,.45); }
+      70% { box-shadow: 0 0 0 12px rgba(193,88,79,0); }
+      100% { box-shadow: 0 0 0 0 rgba(193,88,79,0); }
+    }
+    .assistant-panel {
+      position: fixed; right: 24px; bottom: 24px; width: 380px; max-width: calc(100vw - 48px);
+      max-height: 70vh; background: var(--bg2); border-radius: var(--radius);
+      box-shadow: 0 12px 40px rgba(27,36,29,.18); display: none; flex-direction: column;
+      overflow: hidden; z-index: 200;
+    }
+    .assistant-panel.show { display: flex; }
+    .assistant-head {
+      display: flex; align-items: center; gap: 10px; padding: 16px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .assistant-head .a-avatar {
+      width: 34px; height: 34px; border-radius: 11px; background: var(--accent);
+      color: #fff; display: grid; place-items: center; font-size: 17px; flex-shrink: 0;
+    }
+    .assistant-head .a-title { font-weight: 700; font-size: 15px; }
+    .assistant-head .a-sub { font-size: 12px; color: var(--text2); }
+    .assistant-head .a-close {
+      margin-left: auto; cursor: pointer; color: var(--text2); font-size: 20px;
+      background: none; border: none; line-height: 1;
+    }
+    .assistant-log {
+      flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .a-msg { max-width: 85%; padding: 10px 13px; border-radius: 14px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
+    .a-msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+    .a-msg.bot { align-self: flex-start; background: var(--bg3); color: var(--text); border-bottom-left-radius: 4px; }
+    .a-msg.bot.thinking { color: var(--text2); font-style: italic; }
+    .a-empty { color: var(--text2); font-size: 13px; text-align: center; margin: auto 0; padding: 20px; }
+    .a-empty b { color: var(--text); }
+    .assistant-input {
+      display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border);
+    }
+    .assistant-input input {
+      flex: 1; border: 1px solid var(--border); background: var(--bg); border-radius: 12px;
+      padding: 10px 12px; font-size: 14px; color: var(--text); outline: none; font-family: inherit;
+    }
+    .assistant-input input:focus { border-color: var(--accent); }
+    .a-icon-btn {
+      width: 40px; height: 40px; border-radius: 12px; border: none; cursor: pointer; flex-shrink: 0;
+      display: grid; place-items: center; font-size: 17px; background: var(--bg3); color: var(--text);
+      transition: all .15s;
+    }
+    .a-icon-btn:hover { background: var(--border); }
+    .a-icon-btn.mic.listening { background: var(--red); color: #fff; animation: pulse 1.4s infinite; }
+    .a-icon-btn.send { background: var(--accent); color: #fff; }
+    .a-icon-btn.send:hover { background: var(--accent2); }
+    .a-speak-toggle { font-size: 12px; color: var(--text2); cursor: pointer; user-select: none; padding: 0 4px; }
+    .a-speak-toggle.on { color: var(--accent); font-weight: 600; }
     .app-main { flex: 1; min-width: 0; }
 
     /* ─── Header ─── */
@@ -666,6 +726,7 @@
       <div class="brand">🧠</div>
       <a class="nav-btn active" href="/" title="Dashboard">▚</a>
       <a class="nav-btn" href="/clientops" title="ClientOps">☰</a>
+      <button class="nav-btn" id="nav-assistant" title="Talk to Janjak" onclick="toggleAssistant()">🎙</button>
       <div class="nav-spacer"></div>
     </aside>
 
@@ -876,6 +937,31 @@
         <button class="modal-btn secondary" id="reply-copy-btn" disabled onclick="copyReply()">Copy to Clipboard</button>
         <button class="modal-btn secondary" onclick="closeReplyModal()">Close</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Voice Assistant Panel -->
+  <div class="assistant-panel" id="assistant-panel">
+    <div class="assistant-head">
+      <div class="a-avatar">🧠</div>
+      <div>
+        <div class="a-title">Ask Janjak</div>
+        <div class="a-sub" id="assistant-sub">Type or tap the mic to talk</div>
+      </div>
+      <span class="a-speak-toggle on" id="a-speak-toggle" onclick="toggleSpeak()" title="Speak replies aloud">🔊 Speak</span>
+      <button class="a-close" onclick="toggleAssistant(false)" title="Close">×</button>
+    </div>
+    <div class="assistant-log" id="assistant-log">
+      <div class="a-empty" id="assistant-empty">
+        Try: <b>"How's my focus today?"</b>, <b>"Start a pomodoro"</b>,
+        <b>"Add a task to email the client"</b>, or <b>"What's on my calendar?"</b>
+      </div>
+    </div>
+    <div class="assistant-input">
+      <button class="a-icon-btn mic" id="a-mic-btn" onclick="toggleListen()" title="Speak">🎙</button>
+      <input id="a-input" placeholder="Ask or tell Janjak something…" autocomplete="off"
+             onkeydown="if(event.key==='Enter')sendAssistant()" />
+      <button class="a-icon-btn send" onclick="sendAssistant()" title="Send">➤</button>
     </div>
   </div>
 
@@ -1159,9 +1245,9 @@
           if (a.action && a.action.startsWith("http")) {
             actionHtml = `<a class="alert-action" href="${esc(a.action)}" target="_blank">${esc(a.actionLabel)}</a>`;
           } else if (a.action === "janjak focus") {
-            actionHtml = `<span class="alert-action" onclick="doAction('/api/focus')">${esc(a.actionLabel)}</span>`;
+            actionHtml = `<span class="alert-action" onclick="doAction('focus')">${esc(a.actionLabel)}</span>`;
           } else if (a.action === "janjak break") {
-            actionHtml = `<span class="alert-action" onclick="doAction('/api/break')">${esc(a.actionLabel)}</span>`;
+            actionHtml = `<span class="alert-action" onclick="doAction('break')">${esc(a.actionLabel)}</span>`;
           }
         }
         return `<div class="alert-item ${a.priority}">
@@ -1173,10 +1259,6 @@
           </div>
         </div>`;
       }).join("");
-    }
-
-    async function doAction(endpoint) {
-      try { await fetch(API + endpoint, { method: "POST" }); } catch {}
     }
 
     // ─── Reply Modal ───
@@ -1271,6 +1353,132 @@
         <span class="gh-stat-count" style="color:${color}">${count}</span>
         <span class="gh-stat-label">${label}</span>
       </div>`;
+    }
+
+    // ─── Voice Assistant ───
+    let assistantHistory = [];
+    let speakReplies = true;
+    let recognizing = false;
+    let recognition = null;
+
+    function toggleAssistant(force) {
+      const panel = document.getElementById("assistant-panel");
+      const open = force === undefined ? !panel.classList.contains("show") : force;
+      panel.classList.toggle("show", open);
+      document.getElementById("nav-assistant").classList.toggle("active", open);
+      if (open) setTimeout(() => document.getElementById("a-input").focus(), 50);
+      else stopListen();
+    }
+
+    function toggleSpeak() {
+      speakReplies = !speakReplies;
+      const t = document.getElementById("a-speak-toggle");
+      t.classList.toggle("on", speakReplies);
+      t.textContent = speakReplies ? "🔊 Speak" : "🔇 Muted";
+      if (!speakReplies) window.speechSynthesis?.cancel();
+    }
+
+    function addMsg(role, text) {
+      const log = document.getElementById("assistant-log");
+      const empty = document.getElementById("assistant-empty");
+      if (empty) empty.remove();
+      const div = document.createElement("div");
+      div.className = "a-msg " + role;
+      div.textContent = text;
+      log.appendChild(div);
+      log.scrollTop = log.scrollHeight;
+      return div;
+    }
+
+    function speak(text) {
+      if (!speakReplies || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1.02; u.pitch = 1;
+      window.speechSynthesis.speak(u);
+    }
+
+    async function sendAssistant(preset) {
+      const input = document.getElementById("a-input");
+      const text = (preset ?? input.value).trim();
+      if (!text) return;
+      input.value = "";
+      addMsg("user", text);
+      const thinking = addMsg("bot", "Thinking…");
+      thinking.classList.add("thinking");
+      document.getElementById("assistant-sub").textContent = "Working on it…";
+      try {
+        const res = await fetch(API + "/api/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, history: assistantHistory }),
+        });
+        const data = await res.json();
+        const reply = data.reply || data.error || "Sorry, I couldn't process that.";
+        thinking.classList.remove("thinking");
+        thinking.textContent = reply;
+        assistantHistory.push({ role: "user", content: text });
+        assistantHistory.push({ role: "assistant", content: reply });
+        if (assistantHistory.length > 16) assistantHistory = assistantHistory.slice(-16);
+        speak(reply);
+        setTimeout(refresh, 400); // pick up any state changes the agent made
+      } catch (e) {
+        thinking.classList.remove("thinking");
+        thinking.textContent = "Network error — is the server running?";
+      } finally {
+        document.getElementById("assistant-sub").textContent = "Type or tap the mic to talk";
+        document.getElementById("assistant-log").scrollTop = 1e9;
+      }
+    }
+
+    // ── Speech-to-text (Web Speech API) ──
+    function getRecognizer() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) return null;
+      const r = new SR();
+      r.lang = "en-US";
+      r.interimResults = true;
+      r.continuous = false;
+      return r;
+    }
+
+    function toggleListen() {
+      if (recognizing) { stopListen(); return; }
+      recognition = getRecognizer();
+      if (!recognition) {
+        document.getElementById("assistant-sub").textContent = "Voice input not supported in this browser";
+        return;
+      }
+      const micBtn = document.getElementById("a-mic-btn");
+      const navBtn = document.getElementById("nav-assistant");
+      const input = document.getElementById("a-input");
+      recognizing = true;
+      micBtn.classList.add("listening");
+      navBtn.classList.add("listening");
+      document.getElementById("assistant-sub").textContent = "Listening…";
+      window.speechSynthesis?.cancel();
+
+      recognition.onresult = (ev) => {
+        let transcript = "";
+        for (let i = 0; i < ev.results.length; i++) transcript += ev.results[i][0].transcript;
+        input.value = transcript;
+        if (ev.results[ev.results.length - 1].isFinal) {
+          stopListen();
+          sendAssistant(transcript);
+        }
+      };
+      recognition.onerror = () => stopListen();
+      recognition.onend = () => stopListen();
+      try { recognition.start(); } catch { stopListen(); }
+    }
+
+    function stopListen() {
+      recognizing = false;
+      if (recognition) { try { recognition.stop(); } catch {} recognition = null; }
+      document.getElementById("a-mic-btn")?.classList.remove("listening");
+      document.getElementById("nav-assistant")?.classList.remove("listening");
+      const sub = document.getElementById("assistant-sub");
+      if (sub) sub.textContent = "Type or tap the mic to talk";
     }
 
     // ─── Polling loop ───
