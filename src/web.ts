@@ -556,6 +556,23 @@ export function startWebDashboard(): Promise<void> {
       });
     });
 
+    // Graceful handling when the port is already taken — almost always an
+    // existing Janjak dashboard. Open the browser to it and exit cleanly
+    // instead of crashing with an EADDRINUSE stack trace.
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        console.log(`\n🌐 Janjak Web Dashboard is already running.`);
+        console.log(`   http://localhost:${PORT}\n`);
+        import("node:child_process").then(({ exec }) => {
+          exec(`open http://localhost:${PORT}`);
+        });
+        resolve();
+        return;
+      }
+      console.error(`\n❌ Could not start the web dashboard: ${err.message}\n`);
+      process.exit(1);
+    });
+
     server.listen(PORT, "127.0.0.1", () => {
       console.log(`\n🌐 Janjak Web Dashboard`);
       console.log(`   http://localhost:${PORT}`);

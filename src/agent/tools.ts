@@ -189,13 +189,13 @@ const tools: AgentTool[] = [
       function: {
         name: "update_task_status",
         description:
-          "Change the status of one or all EXISTING tasks. This is the ONLY correct way to mark a task done/completed/finished, or to dismiss/remove/delete a task. Call list_tasks first to get task IDs. Pass id='all' to apply the status to every open task at once. Do NOT create a new task to represent completing an existing one.",
+          "Change the status of one or all EXISTING tasks. This is the ONLY correct way to mark a task done/completed/finished, or to dismiss/remove/delete a task. You can target a task by its number OR by a word/phrase from its title (e.g. 'dentist'). Pass id='all' to apply the status to every open task at once. Do NOT create a new task to represent completing an existing one.",
         parameters: {
           type: "object",
           properties: {
             id: {
               type: "string",
-              description: "The task number to update (e.g. '52'), or 'all' to update every open task.",
+              description: "The task number (e.g. '52'), a word or phrase from the task title (e.g. 'dentist'), or 'all' to update every open task.",
             },
             status: {
               type: "string",
@@ -220,13 +220,28 @@ const tools: AgentTool[] = [
         const verb = status === "done" ? "completed" : status === "dismissed" ? "removed" : `set to ${status}`;
         return `Marked all ${open.length} open task(s) as ${verb}: ${open.map((t) => `#${t.id}`).join(", ")}.`;
       }
-      const id = parseInt(idArg, 10);
-      if (isNaN(id)) return "ERROR: id must be a task number or 'all'.";
-      const task = getTasks().find((t) => t.id === id);
-      if (!task) return `No open task with id #${id}. Call list_tasks to see current tasks.`;
-      updateTaskStatus(id, status);
       const verb = status === "done" ? "completed" : status === "dismissed" ? "removed" : `set to ${status}`;
-      return `Task #${id} "${task.title}" ${verb}.`;
+      const open = getTasks().filter((t) => typeof t.id === "number");
+      // Numeric target: match by task ID.
+      if (/^\d+$/.test(idArg)) {
+        const id = parseInt(idArg, 10);
+        const task = open.find((t) => t.id === id);
+        if (!task) return `No open task with id #${id}. Call list_tasks to see current tasks.`;
+        updateTaskStatus(id, status);
+        return `Task #${id} "${task.title}" ${verb}.`;
+      }
+      // Title target: case-insensitive substring match on open task titles.
+      const matches = open.filter((t) => t.title.toLowerCase().includes(idArg));
+      if (matches.length === 0) {
+        return `No open task matching "${idArg}". Call list_tasks to see current tasks.`;
+      }
+      if (matches.length > 1) {
+        const list = matches.map((t) => `#${t.id} "${t.title}"`).join(", ");
+        return `Multiple tasks match "${idArg}": ${list}. Ask which one (call update_task_status again with the specific number).`;
+      }
+      const only = matches[0]!;
+      updateTaskStatus(only.id!, status);
+      return `Task #${only.id} "${only.title}" ${verb}.`;
     },
   },
 
