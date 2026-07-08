@@ -459,28 +459,30 @@
 
     /* ─── Quick Actions ─── */
     .actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
     }
     .action-btn {
-      padding: 10px 20px;
+      padding: 9px 8px;
       border: 1px solid var(--border);
       border-radius: 10px;
       background: var(--bg3);
       color: var(--text);
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.18s;
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
     }
     .action-btn:hover {
       background: var(--accent);
       border-color: var(--accent);
       color: #fff;
+      transform: translateY(-1px);
     }
     .action-btn.active {
       background: var(--accent);
@@ -491,56 +493,160 @@
       background: var(--red);
       border-color: var(--red);
     }
+    #quick-actions-card { padding-bottom: 16px; }
 
     /* ─── Calendar ─── */
     .cal-event {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 8px 12px;
+      padding: 10px 12px;
       background: var(--bg3);
-      border-radius: 10px;
-      margin-bottom: 6px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 8px;
     }
+    .cal-event.now { border-color: rgba(193,88,79,0.45); background: rgba(193,88,79,0.06); }
     .cal-dot {
       width: 8px; height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
     }
-    .cal-dot.now { background: var(--red); }
+    .cal-dot.now { background: var(--red); box-shadow: 0 0 0 4px rgba(193,88,79,0.16); }
     .cal-dot.upcoming { background: var(--yellow); }
     .cal-dot.passed { background: var(--text2); }
     .cal-time {
       font-size: 12px;
       color: var(--text2);
-      width: 60px;
+      width: 62px;
       flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
     }
+    .cal-main { flex: 1; min-width: 0; }
     .cal-title {
       font-size: 14px;
-      flex: 1;
+      font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .cal-sub {
+      font-size: 12px;
+      color: var(--text2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .cal-join {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      border-radius: 9px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .cal-join:hover { background: var(--accent2); transform: translateY(-1px); }
+    .cal-join.now { background: var(--red); }
+    .cal-join.now:hover { background: #a94a42; }
+    .cal-summary {
+      margin-top: 10px;
+      display: flex;
+      gap: 14px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+    .cal-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 28px 12px 22px;
+      gap: 6px;
+    }
+    .cal-empty-icon { font-size: 34px; opacity: 0.85; }
+    .cal-empty-title { font-size: 15px; font-weight: 600; color: var(--text); }
+    .cal-empty-sub { font-size: 13px; color: var(--text2); }
 
     /* ─── GitHub ─── */
-    .gh-stat {
+    .gh-stats {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .gh-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 11px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--text2);
+      font-weight: 600;
+    }
+    .gh-chip b { color: var(--text); font-size: 13px; }
+    .gh-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text2);
+      margin: 10px 0 6px;
+    }
+    .gh-row {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 8px 0;
+      padding: 8px 10px;
+      border-radius: 10px;
+      text-decoration: none;
+      color: inherit;
+      transition: background 0.15s;
+      border: 1px solid transparent;
     }
-    .gh-stat-icon { font-size: 18px; }
-    .gh-stat-count {
-      font-size: 24px;
-      font-weight: 700;
-      min-width: 30px;
-    }
-    .gh-stat-label {
+    .gh-row:hover { background: var(--bg3); border-color: var(--border); }
+    .gh-row-icon { font-size: 15px; flex-shrink: 0; }
+    .gh-row-main { flex: 1; min-width: 0; }
+    .gh-row-title {
       font-size: 13px;
-      color: var(--text2);
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+    .gh-row-sub {
+      font-size: 11px;
+      color: var(--text2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+    .gh-badge {
+      flex-shrink: 0;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(193,88,79,0.14);
+      color: var(--red);
+    }
+    .gh-badge.draft { background: var(--bg3); color: var(--text2); }
+    .gh-open-icon { flex-shrink: 0; color: var(--text2); font-size: 12px; opacity: 0; transition: opacity 0.15s; }
+    .gh-row:hover .gh-open-icon { opacity: 1; }
 
     /* ─── Projects ─── */
     .project-list { display: flex; flex-direction: column; gap: 10px; }
@@ -601,16 +707,97 @@
     }
 
     /* ─── Music ─── */
-    .music-track {
-      font-size: 15px;
+    .music-now {
+      display: flex;
+      gap: 12px;
+      align-items: center;
       margin-bottom: 12px;
+    }
+    .music-art {
+      width: 56px; height: 56px;
+      border-radius: 10px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--bg3);
+      box-shadow: var(--shadow);
+    }
+    .music-art.placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: var(--text2);
+    }
+    .music-meta { flex: 1; min-width: 0; }
+    .music-title {
+      font-size: 15px;
+      font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .music-artist {
+      font-size: 13px;
+      color: var(--text2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+    .music-album {
+      font-size: 11px;
+      color: var(--text2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+      opacity: 0.85;
+    }
+    .music-progress {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-size: 11px;
+      color: var(--text2);
+      font-variant-numeric: tabular-nums;
+    }
+    .music-bar-bg {
+      flex: 1;
+      height: 5px;
+      background: var(--bg3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .music-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width 0.6s linear;
+    }
+    .music-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 6px;
+      padding: 22px 12px 16px;
+    }
+    .music-empty-icon { font-size: 30px; opacity: 0.8; }
+    .music-empty-text { font-size: 14px; color: var(--text2); }
+    .music-open {
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      margin-left: auto;
+    }
+    .music-open:hover { text-decoration: underline; }
     .music-controls {
       display: flex;
       gap: 8px;
+      align-items: center;
     }
     .music-btn {
       width: 36px; height: 36px;
@@ -628,6 +815,7 @@
     .music-btn:hover {
       background: var(--accent);
       border-color: var(--accent);
+      color: #fff;
     }
 
     /* ─── Nudge ─── */
@@ -814,7 +1002,7 @@
     </div>
 
     <!-- Quick Actions -->
-    <div class="card">
+    <div class="card" id="quick-actions-card">
       <div class="card-header">
         <span class="card-title">Quick Actions</span>
         <span class="card-icon">⚡</span>
@@ -908,7 +1096,12 @@
         <span class="card-title">Music</span>
         <span class="card-icon">🎵</span>
       </div>
-      <div class="music-track" id="music-track">Nothing playing</div>
+      <div id="music-content">
+        <div class="music-empty">
+          <div class="music-empty-icon">🔇</div>
+          <div class="music-empty-text">Nothing playing</div>
+        </div>
+      </div>
       <div class="music-controls">
         <button class="music-btn" onclick="musicAction('pause')" title="Pause">⏸</button>
         <button class="music-btn" onclick="musicAction('resume')" title="Play">▶</button>
@@ -1172,19 +1365,22 @@
       }
       if (!s.integrations.googleAuth) {
         calContent.innerHTML = '<div class="task-empty">Run <code>janjak login</code> to connect Google Calendar</div>';
-      } else if (s.calendar) {
+      } else if (s.calendar && (s.calendar.currentEvent || s.calendar.nextEvent)) {
         let html = "";
-        if (s.calendar.currentEvent) {
-          html += `<div class="cal-event"><div class="cal-dot now"></div><span class="cal-time">NOW</span><span class="cal-title">${esc(s.calendar.currentEvent.title)}</span></div>`;
-        }
-        if (s.calendar.nextEvent) {
-          const mins = s.calendar.nextEvent.minutesUntil;
-          html += `<div class="cal-event"><div class="cal-dot upcoming"></div><span class="cal-time">in ${mins}m</span><span class="cal-title">${esc(s.calendar.nextEvent.title)}</span></div>`;
-        }
-        html += `<div style="margin-top:8px;font-size:13px;color:var(--text2)">📅 ${s.calendar.totalMeetings} meeting${s.calendar.totalMeetings!==1?"s":""} · 🟢 ${s.calendar.freeMinutes}m free</div>`;
-        calContent.innerHTML = html || '<div class="task-empty">No events today 🎉</div>';
+        const cur = s.calendar.currentEvent;
+        const nxt = s.calendar.nextEvent;
+        if (cur) html += calEventRow(cur, "now");
+        if (nxt) html += calEventRow(nxt, "upcoming");
+        html += `<div class="cal-summary"><span>📅 ${s.calendar.totalMeetings} meeting${s.calendar.totalMeetings!==1?"s":""} today</span><span>🟢 ${s.calendar.freeMinutes}m free</span></div>`;
+        calContent.innerHTML = html;
       } else {
-        calContent.innerHTML = '<div class="task-empty">No events today 🎉</div>';
+        const free = s.calendar ? s.calendar.freeMinutes : 0;
+        calContent.innerHTML =
+          '<div class="cal-empty">' +
+            '<div class="cal-empty-icon">🗓️</div>' +
+            '<div class="cal-empty-title">No meetings today</div>' +
+            `<div class="cal-empty-sub">${free ? free + "m free · enjoy the focus time" : "Your schedule is clear"}</div>` +
+          '</div>';
       }
 
       // GitHub
@@ -1192,12 +1388,35 @@
       if (!s.integrations.github) {
         ghContent.innerHTML = '<div class="task-empty">Add GITHUB_TOKEN to ~/.janjak/.env</div>';
       } else if (s.github) {
-        let html = "";
-        if (s.github.reviewCount > 0) html += ghStat("🔍", s.github.reviewCount, "review" + (s.github.reviewCount > 1 ? "s" : "") + " requested", "var(--red)");
-        if (s.github.prCount > 0) html += ghStat("📤", s.github.prCount, "open PR" + (s.github.prCount > 1 ? "s" : ""), "var(--cyan)");
-        if (s.github.issueCount > 0) html += ghStat("📋", s.github.issueCount, "assigned issue" + (s.github.issueCount > 1 ? "s" : ""), "var(--yellow)");
-        if (s.github.notifCount > 0) html += ghStat("🔔", s.github.notifCount, "notification" + (s.github.notifCount > 1 ? "s" : ""), "var(--accent2)");
-        if (!html) html = '<div class="task-empty">All clear ✨</div>';
+        const g = s.github;
+        let html = '<div class="gh-stats">';
+        html += ghChip("🔍", g.reviewCount, "reviews");
+        html += ghChip("📤", g.prCount, "PRs");
+        html += ghChip("📋", g.issueCount, "issues");
+        html += ghChip("🔔", g.notifCount, "notifs");
+        html += '</div>';
+
+        const rows = [];
+        (g.reviews || []).forEach(pr => rows.push(ghRow("🔍", pr, pr.repo + " · @" + pr.author, '<span class="gh-badge">REVIEW</span>')));
+        (g.prs || []).forEach(pr => rows.push(ghRow("📤", pr, pr.repo, pr.draft ? '<span class="gh-badge draft">DRAFT</span>' : "")));
+        (g.issues || []).forEach(is => rows.push(ghRow("📋", is, is.repo, "")));
+        if (rows.length) {
+          html += '<div class="gh-section-label">Open work</div>' + rows.slice(0, 6).join("");
+        }
+
+        if (g.pushes && g.pushes.length) {
+          html += '<div class="gh-section-label">Recent pushes</div>';
+          html += g.pushes.map(p => {
+            const sub = `${p.repo}${p.branch ? " · " + esc(p.branch) : ""} · ${timeAgo(p.at)}`;
+            const cnt = p.commits ? `<span class="gh-badge draft">${p.commits}↑</span>` : "";
+            return `<a class="gh-row" href="${esc(p.url)}" target="_blank" rel="noopener">
+              <span class="gh-row-icon">⬆️</span>
+              <span class="gh-row-main"><div class="gh-row-title">${esc(p.message || "Pushed commits")}</div><div class="gh-row-sub">${sub}</div></span>
+              ${cnt}<span class="gh-open-icon">↗</span></a>`;
+          }).join("");
+        }
+
+        if (!rows.length && !(g.pushes && g.pushes.length)) html += '<div class="task-empty">All clear ✨</div>';
         ghContent.innerHTML = html;
       } else {
         ghContent.innerHTML = '<div class="task-empty">Loading…</div>';
@@ -1220,7 +1439,7 @@
       }
 
       // Music
-      document.getElementById("music-track").textContent = s.music || "Nothing playing 🔇";
+      renderMusic(s.music);
 
       // Nudge
       const nudgeCard = document.getElementById("nudge-card");
@@ -1372,12 +1591,90 @@
       });
     }
 
-    function ghStat(icon, count, label, color) {
-      return `<div class="gh-stat">
-        <span class="gh-stat-icon">${icon}</span>
-        <span class="gh-stat-count" style="color:${color}">${count}</span>
-        <span class="gh-stat-label">${label}</span>
+    function ghChip(icon, count, label) {
+      return `<span class="gh-chip">${icon} <b>${count || 0}</b> ${label}</span>`;
+    }
+
+    function ghRow(icon, item, sub, badge) {
+      return `<a class="gh-row" href="${esc(item.url)}" target="_blank" rel="noopener">
+        <span class="gh-row-icon">${icon}</span>
+        <span class="gh-row-main">
+          <div class="gh-row-title">#${item.number} ${esc(item.title)}</div>
+          <div class="gh-row-sub">${esc(sub)}</div>
+        </span>
+        ${badge || ""}<span class="gh-open-icon">↗</span></a>`;
+    }
+
+    function calEventRow(ev, kind) {
+      const isNow = kind === "now";
+      const timeLabel = isNow ? "NOW" : (typeof ev.minutesUntil === "number" ? "in " + ev.minutesUntil + "m" : fmtClock(ev.start));
+      const sub = isNow ? fmtClock(ev.start) + "–" + fmtClock(ev.end) : fmtClock(ev.start) + (ev.location ? " · " + esc(ev.location) : "");
+      let join = "";
+      if (ev.meetLink) {
+        join = `<a class="cal-join${isNow ? " now" : ""}" href="${esc(ev.meetLink)}" target="_blank" rel="noopener">▶ ${isNow ? "Join" : "Launch"}</a>`;
+      }
+      return `<div class="cal-event${isNow ? " now" : ""}">
+        <div class="cal-dot ${kind}"></div>
+        <span class="cal-time">${timeLabel}</span>
+        <span class="cal-main"><div class="cal-title">${esc(ev.title)}</div><div class="cal-sub">${sub}</div></span>
+        ${join}
       </div>`;
+    }
+
+    function renderMusic(m) {
+      const content = document.getElementById("music-content");
+      if (!m || !m.title) {
+        content.innerHTML =
+          '<div class="music-empty"><div class="music-empty-icon">🔇</div><div class="music-empty-text">Nothing playing</div></div>';
+        return;
+      }
+      const art = m.artworkUrl
+        ? `<img class="music-art" src="${esc(m.artworkUrl)}" alt="" onerror="this.style.display='none'">`
+        : '<div class="music-art placeholder">🎵</div>';
+      const open = m.url ? `<a class="music-open" href="${esc(m.url)}" target="_blank" rel="noopener">Open ↗</a>` : "";
+      let html =
+        '<div class="music-now">' + art +
+          '<div class="music-meta">' +
+            `<div class="music-title">${esc(m.title)}</div>` +
+            `<div class="music-artist">${esc(m.artist || "")}</div>` +
+            (m.album ? `<div class="music-album">${esc(m.album)}</div>` : "") +
+          '</div>' + open +
+        '</div>';
+      const durSec = Math.round((m.durationMs || 0) / 1000);
+      if (durSec > 0) {
+        const pos = Math.min(m.positionSec || 0, durSec);
+        const pct = Math.round((pos / durSec) * 100);
+        html +=
+          '<div class="music-progress">' +
+            `<span>${fmtDur(pos)}</span>` +
+            `<div class="music-bar-bg"><div class="music-bar-fill" style="width:${pct}%"></div></div>` +
+            `<span>${fmtDur(durSec)}</span>` +
+          '</div>';
+      }
+      content.innerHTML = html;
+    }
+
+    function fmtClock(iso) {
+      try {
+        return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      } catch { return ""; }
+    }
+
+    function fmtDur(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return m + ":" + String(s).padStart(2, "0");
+    }
+
+    function timeAgo(iso) {
+      const diff = Date.now() - new Date(iso).getTime();
+      const mins = Math.round(diff / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return mins + "m ago";
+      const hours = Math.round(mins / 60);
+      if (hours < 24) return hours + "h ago";
+      const days = Math.round(hours / 24);
+      return days + "d ago";
     }
 
     // ─── Voice Assistant ───

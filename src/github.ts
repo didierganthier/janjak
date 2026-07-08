@@ -76,6 +76,15 @@ export interface GitHubSummary {
   notifications: GitHubNotification[];
 }
 
+export interface GitHubPush {
+  repo: string;
+  branch: string;
+  commits: number;
+  message: string;
+  url: string;
+  at: string;
+}
+
 // ─── API Calls ──────────────────────────────────────────────────
 
 async function getUser(): Promise<string | null> {
@@ -149,6 +158,32 @@ async function getNotifications(): Promise<GitHubNotification[]> {
 }
 
 // ─── Main fetch ─────────────────────────────────────────────────
+
+/** Get the user's recent push events across repos. */
+async function getRecentPushes(user: string): Promise<GitHubPush[]> {
+  const data = await ghFetch<any[]>(`/users/${user}/events?per_page=30`);
+  if (!Array.isArray(data)) return [];
+  return data
+    .filter((e) => e.type === "PushEvent")
+    .slice(0, 5)
+    .map((e) => {
+      const repo: string = e.repo?.name ?? "";
+      const branch: string = (e.payload?.ref ?? "").replace("refs/heads/", "");
+      const commitList: any[] = e.payload?.commits ?? [];
+      const commits: number = commitList.length || e.payload?.size || 0;
+      const head = commitList[commitList.length - 1]?.message ?? "";
+      const message: string = String(head).split("\n")[0];
+      const before = e.payload?.before;
+      const headSha = e.payload?.head;
+      const url =
+        repo && before && headSha
+          ? `https://github.com/${repo}/compare/${before}...${headSha}`
+          : repo
+          ? `https://github.com/${repo}`
+          : "";
+      return { repo, branch, commits, message, url, at: e.created_at };
+    });
+}
 
 export async function getGitHubSummary(): Promise<GitHubSummary | null> {
   const user = await getUser();
@@ -254,17 +289,34 @@ export async function formatGitHubReport(): Promise<string> {
 
 /** Short summary for dashboard. */
 export async function getGitHubDashSummary(): Promise<{
+  user: string;
   reviewCount: number;
   prCount: number;
   issueCount: number;
   notifCount: number;
+  reviews: Array<{ number: number; title: string; repo: string; url: string; author: string; updatedAt: string }>;
+  prs: Array<{ number: number; title: string; repo: string; url: string; draft: boolean; updatedAt: string }>;
+  issues: Array<{ number: number; title: string; repo: string; url: string }>;
+  pushes: GitHubPush[];
 } | null> {
   const summary = await getGitHubSummary();
   if (!summary) return null;
+  const pushes = await getRecentPushes(summary.user);
   return {
+    user: summary.user,
     reviewCount: summary.reviewRequests.length,
     prCount: summary.prs.length,
     issueCount: summary.issues.length,
     notifCount: summary.notifications.length,
+    reviews: summary.reviewRequests.slice(0, 5).map((pr) => ({
+      number: pr.number, title: pr.title, repo: pr.repo, url: pr.url, author: pr.author, updatedAt: pr.updatedAt,
+    })),
+    prs: summary.prs.slice(0, 5).map((pr) => ({
+      number: pr.number, title: pr.title, repo: pr.repo, url: pr.url, draft: pr.draft, updatedAt: pr.updatedAt,
+    })),
+    issues: summary.issues.slice(0, 5).map((i) => ({
+      number: i.number, title: i.title, repo: i.repo, url: i.url,
+    })),
+    pushes,
   };
 }

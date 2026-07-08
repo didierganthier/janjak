@@ -14,11 +14,11 @@ import { getProactiveAlerts } from "./proactive.js";
 import { getTaskById, generateReply } from "./reply.js";
 import { getTodayStats, getTasks, getTodayProjectTime, updateTaskStatus } from "./db.js";
 import { getTodayScore, getWeeklyScores } from "./score.js";
-import { getCurrentTrack, pauseMusic, resumeMusic } from "./music.js";
+import { getCurrentTrackDetails, pauseMusic, resumeMusic } from "./music.js";
 import { getCurrentStreak } from "./streak.js";
 import { getPomodoroStats } from "./pomo.js";
 import { getCurrentProject } from "./project.js";
-import { getCalendarSummary, getMeetingAlert, getTodayEvents, getFreeSlots } from "./calendar.js";
+import { getCalendarSummary, getMeetingAlert, getTodayEvents, getFreeSlots, type CalendarEvent } from "./calendar.js";
 import { getGitHubDashSummary, isGitHubConfigured } from "./github.js";
 import { isAuthenticated } from "./gmail-auth.js";
 import type { TaskStatus } from "./types.js";
@@ -49,7 +49,7 @@ async function getFullState() {
   const pomo = getPomodoroStats();
   const { project, branch } = getCurrentProject();
   const nudge = getNudge();
-  const track = await getCurrentTrack();
+  const track = await getCurrentTrackDetails();
 
   let calendar = null;
   let meetingAlert = null;
@@ -58,10 +58,14 @@ async function getFullState() {
     meetingAlert = await getMeetingAlert();
     if (calendar) {
       // Serialize CalendarEvent objects to plain data
+      const slim = (e: CalendarEvent | null) => e ? {
+        title: e.title, start: e.start, end: e.end, minutesUntil: e.minutesUntil,
+        meetLink: e.meetLink, location: e.location, status: e.status,
+      } : null;
       calendar = {
         ...calendar,
-        currentEvent: calendar.currentEvent ? { title: calendar.currentEvent.title, start: calendar.currentEvent.start, end: calendar.currentEvent.end, meetLink: calendar.currentEvent.meetLink } : null,
-        nextEvent: calendar.nextEvent ? { title: calendar.nextEvent.title, start: calendar.nextEvent.start, end: calendar.nextEvent.end, minutesUntil: calendar.nextEvent.minutesUntil, meetLink: calendar.nextEvent.meetLink } : null,
+        currentEvent: slim(calendar.currentEvent),
+        nextEvent: slim(calendar.nextEvent),
       };
     }
   } catch { /* calendar not connected */ }
