@@ -493,6 +493,11 @@
       background: var(--red);
       border-color: var(--red);
     }
+    .action-btn.danger.active {
+      background: rgba(193,88,79,0.12);
+      border-color: rgba(193,88,79,0.4);
+      color: var(--red);
+    }
     #quick-actions-card { padding-bottom: 16px; }
 
     /* ─── Calendar ─── */
@@ -1268,9 +1273,11 @@
       document.getElementById("status-energy").textContent = ENERGY_DISPLAY[s.status.energy] || s.status.energy;
       document.getElementById("status-project").textContent = s.currentProject.project || "—";
 
-      // Focus button highlighting
-      document.getElementById("btn-focus").classList.toggle("active", s.status.focusMode === "deep-work");
-      document.getElementById("btn-break").classList.toggle("active", s.status.focusMode === "break");
+      // Focus button highlighting — exactly one mode is always active
+      const fm = s.status.focusMode;
+      document.getElementById("btn-focus").classList.toggle("active", fm === "deep-work");
+      document.getElementById("btn-break").classList.toggle("active", fm === "break");
+      document.getElementById("btn-stop").classList.toggle("active", fm !== "deep-work" && fm !== "break");
 
       // Score
       const sc = s.score;
